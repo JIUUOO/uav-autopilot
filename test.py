@@ -29,7 +29,7 @@ FLIGHT_MODE = "STABILIZE"
 
 conn = mavutil.mavlink_connection(SERIAL_PORT, baud=BAUD_RATE)
 conn.wait_heartbeat()
-print(f"Connected! System ID: {conn.target_system}")  # 1이면 Pixhawk 정상 인식
+print(f"Connected (System Id: {conn.target_system})")  # 1이면 Pixhawk 정상 인식
 
 if DEV_MODE and DEV_DISABLE_ARMING_CHECK:
     conn.mav.param_set_send(
@@ -40,7 +40,7 @@ if DEV_MODE and DEV_DISABLE_ARMING_CHECK:
         mavutil.mavlink.MAV_PARAM_TYPE_INT32,
     )
     time.sleep(1)
-    print("[DEV] ARMING_CHECK 비활성화됨")
+    print("ARMING_CHECK disabled")
 
 conn.set_mode(FLIGHT_MODE)
 time.sleep(2)
@@ -60,7 +60,7 @@ if DEV_MODE and DEV_RUN_ARM_DISARM:
         0,
         0,
     )
-    print("Armed - motors running")
+    print("Armed")
     time.sleep(3)  # ARM 유지 시간
 
     # Disarm
