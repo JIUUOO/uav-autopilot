@@ -1,4 +1,5 @@
 from pymavlink import mavutil
+
 # pip3 install pymavlink
 import time
 
@@ -9,7 +10,7 @@ DEV_MODE = True  # True: 개발/테스트용, False: 실제 비행
 DEV_DISABLE_ARMING_CHECK = True  # 안전 체크 비활성화 (지상 테스트용)
 DEV_RUN_ARM_DISARM = True  # Arm/Disarm 시퀀스 실행
 
-SERIAL_PORT = "/dev/ttyACM0"
+SERIAL_PORT = "/dev/tty.usbmodem1101"
 # 1. 먼저 연결 포트 확인하기
 #   macos: ls /dev/tty.*
 #   linux: ls /dev/ttyACM*
