@@ -1,4 +1,5 @@
 from pymavlink import mavutil
+# pip3 install pymavlink
 import time
 
 # Python Script → MAVLink → Pixhawk → PWM → ESC → Motor → Propeller
@@ -8,9 +9,10 @@ DEV_MODE = True  # True: 개발/테스트용, False: 실제 비행
 DEV_DISABLE_ARMING_CHECK = True  # 안전 체크 비활성화 (지상 테스트용)
 DEV_RUN_ARM_DISARM = True  # Arm/Disarm 시퀀스 실행
 
-SERIAL_PORT = "/dev/tty.usbmodem1401"
+SERIAL_PORT = "/dev/ttyACM0"
 # 1. 먼저 연결 포트 확인하기
-#   ls /dev/tty.*
+#   macos: ls /dev/tty.*
+#   linux: ls /dev/ttyACM*
 # 2. 예시 output
 #   /dev/tty.debug-console            /dev/tty.usbmodem1401
 
@@ -61,7 +63,7 @@ if DEV_MODE and DEV_RUN_ARM_DISARM:
         0,
     )
     print("Armed")
-    time.sleep(3)  # ARM 유지 시간
+    time.sleep(20)  # ARM 유지 시간
 
     # Disarm
     conn.mav.command_long_send(
