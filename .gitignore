@@ -10,8 +10,12 @@ __pycache__/
 
 # macOS
 .DS_Store
+
 # Build outputs
 build/
 __pycache__/
 *.pyc
 *.egg-info/
+
+# LIDAR scan outputs
+/dev/maps
