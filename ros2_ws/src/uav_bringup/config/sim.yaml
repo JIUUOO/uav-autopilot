@@ -1,0 +1,16 @@
+sim_vehicle_state_node:
+  ros__parameters:
+    publish_hz: 10.0
+
+sim_lidar_slice_node:
+  ros__parameters:
+    publish_hz: 4.0
+    frame_id: lidar_vertical
+    angle_min_deg: -170.0
+    angle_max_deg: -10.0
+    range_min_m: 0.10
+    range_max_m: 30.0
+
+sim_detection_event_node:
+  ros__parameters:
+    publish_hz: 0.1
