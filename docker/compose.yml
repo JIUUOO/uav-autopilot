@@ -1,0 +1,32 @@
+services:
+  uav-autopilot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.humble
+
+    image: uav-autopilot:humble
+    container_name: uav-autopilot
+
+    # Use the host network so ROS 2 DDS and MAVLink can communicate without extra port mapping
+    network_mode: host
+
+    # Allow access to hardware devices such as Pixhawk, USB LiDAR, and cameras
+    privileged: true
+
+    environment:
+      - ROS_DOMAIN_ID=0
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+
+    volumes:
+      # Mount the repository into the container for live development
+      - ..:/workspace/uav-autopilot
+
+      # Expose host devices to the container
+      - /dev:/dev
+
+      # Allow GUI applications such as RViz or rqt to connect to the host X server
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+    stdin_open: true
+    tty: true
