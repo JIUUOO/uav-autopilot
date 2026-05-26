@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'arm = uav_bringup.arm_node:main',
+            'disarm = uav_bringup.disarm_node:main',
             'battery_monitor = uav_bringup.battery_monitor_node:main',
         ],
     },
