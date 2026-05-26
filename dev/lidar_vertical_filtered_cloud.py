@@ -2,7 +2,10 @@ import math
 import os
 import time
 
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for headless environments
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # Enable 3D projection support
 import numpy as np
 import ydlidar
 
