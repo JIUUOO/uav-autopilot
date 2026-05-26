@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'arm = uav_bringup.arm_node:main'
         ],
     },
 )
