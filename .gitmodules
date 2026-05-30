@@ -1,3 +1,6 @@
 [submodule "external/YDLidar-SDK"]
 	path = external/YDLidar-SDK
 	url = https://github.com/YDLIDAR/YDLidar-SDK.git
+[submodule "ros2_ws/src/usb_cam"]
+	path = ros2_ws/src/usb_cam
+	url = https://github.com/ros-drivers/usb_cam.git
