@@ -11,7 +11,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ("share/" + package_name + "/launch", ["launch/camera.launch.py"]),
-        ("share/" + package_name + "/config", ["config/front_camera.yaml", "config/down_camera.yaml"]),
+        ("share/" + package_name + "/config", ["config/front_camera.yaml"]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
