@@ -6,7 +6,6 @@ import time
 
 import rclpy
 from rclpy.node import Node
-from pymavlink import mavutil
 
 from uav_bringup.common.flight_ops import FlightOps
 from uav_bringup.common.mavlink_client import MavlinkClient
@@ -105,7 +104,7 @@ class GuidedTakeoffLoiterNode(Node):
         self.get_logger().info(f"hold_sec             : {self.hold_sec}")
 
         self.mav_client.connect()
-        self.request_streams()
+        self.mav_client.request_default_streams(hz=5.0, include_flow_rad=True)
 
 
         # NTRIP
@@ -129,8 +128,12 @@ class GuidedTakeoffLoiterNode(Node):
         if not self.readiness.wait_ready(
             drain_fn=self.drain_mavlink,
             stop_event=self.stop_event,
-            ntrip_connected_fn=self.is_ntrip_connected,
-            rtcm_frames_fn=self.get_rtcm_frames,
+            ntrip_connected_fn=lambda: (
+                self.ntrip_forwarder.connected if self.ntrip_forwarder is not None else False
+            ),
+            rtcm_frames_fn=lambda: (
+                self.ntrip_forwarder.frame_count if self.ntrip_forwarder is not None else 0
+            ),
         ):
             self.get_logger().error("Readiness check failed.")
             self.stop_event.set()
@@ -171,36 +174,8 @@ class GuidedTakeoffLoiterNode(Node):
         self.hold_loop()
         self.stop_event.set()
 
-    def request_streams(self):
-        msg_ids = [
-            mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT,
-            mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
-            mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW,
-            mavutil.mavlink.MAVLINK_MSG_ID_DISTANCE_SENSOR,
-            mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT,
-        ]
-
-        if hasattr(mavutil.mavlink, "MAVLINK_MSG_ID_OPTICAL_FLOW_RAD"):
-            msg_ids.append(mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW_RAD)
-
-        for msg_id in msg_ids:
-            self.mav_client.request_message_interval(msg_id, 5.0)
-
-    def on_mavlink_message(self, msg):
-        self.readiness.process_message(msg)
-
     def drain_mavlink(self):
-        self.mav_client.drain_messages(self.on_mavlink_message)
-
-    def is_ntrip_connected(self) -> bool:
-        if self.ntrip_forwarder is None:
-            return False
-        return self.ntrip_forwarder.ntrip_connected
-
-    def get_rtcm_frames(self) -> int:
-        if self.ntrip_forwarder is None:
-            return 0
-        return self.ntrip_forwarder.rtcm_frames
+        self.mav_client.drain_messages(self.readiness.process_message)
 
     def hold_loop(self) -> bool:
         start = time.time()
@@ -213,8 +188,12 @@ class GuidedTakeoffLoiterNode(Node):
             if now - last_print > 2.0:
                 self.readiness.format_status(
                     prefix="LOITER hold",
-                    ntrip_connected=self.is_ntrip_connected(),
-                    rtcm_frames=self.get_rtcm_frames(),
+                    ntrip_connected=(
+                        self.ntrip_forwarder.connected if self.ntrip_forwarder is not None else False
+                    ),
+                    rtcm_frames=(
+                        self.ntrip_forwarder.frame_count if self.ntrip_forwarder is not None else 0
+                    ),
                     now=now,
                 )
                 last_print = now

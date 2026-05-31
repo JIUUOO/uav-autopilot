@@ -48,6 +48,21 @@ class MavlinkClient:
             0,
         )
 
+    def request_default_streams(self, hz: float = 5.0, include_flow_rad: bool = True):
+        msg_ids = [
+            mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT,
+            mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
+            mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW,
+            mavutil.mavlink.MAVLINK_MSG_ID_DISTANCE_SENSOR,
+            mavutil.mavlink.MAVLINK_MSG_ID_EKF_STATUS_REPORT,
+        ]
+
+        if include_flow_rad and hasattr(mavutil.mavlink, "MAVLINK_MSG_ID_OPTICAL_FLOW_RAD"):
+            msg_ids.append(mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW_RAD)
+
+        for msg_id in msg_ids:
+            self.request_message_interval(msg_id, hz)
+
     def command_long_send(self, *args):
         with self.send_lock:
             self.master.mav.command_long_send(*args)
@@ -75,4 +90,3 @@ class MavlinkClient:
                 return msg
 
         return None
-

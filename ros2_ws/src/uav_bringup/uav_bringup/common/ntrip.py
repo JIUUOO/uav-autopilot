@@ -78,6 +78,14 @@ class NtripForwarder:
         self.ntrip_connected = False
         self._thread = None
 
+    @property
+    def connected(self) -> bool:
+        return self.ntrip_connected
+
+    @property
+    def frame_count(self) -> int:
+        return self.rtcm_frames
+
     def start(self):
         self._thread = threading.Thread(target=self.ntrip_loop, daemon=True)
         self._thread.start()
