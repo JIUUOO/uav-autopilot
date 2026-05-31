@@ -12,7 +12,7 @@ def generate_launch_description():
         package="usb_cam",
         executable="usb_cam_node_exe",
         name="front_usb_cam",
-        namespace="uav/camera/front",
+        namespace="/uav/camera/front",
         output="screen",
         parameters=[front_config],
         remappings=[
