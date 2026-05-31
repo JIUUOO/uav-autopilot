@@ -62,7 +62,7 @@ def _make_bag_process(context, *_args, **_kwargs):
 def generate_launch_description():
     mavros_default_fcu_url = "serial:///dev/ttyACM0:115200"
     mavros_default_gcs_url = "udp://:14555@127.0.0.1:14550"
-    mission_default_port = "udpin:127.0.0.1:14550"
+    mission_default_port = "/dev/ttyACM0" # default USB port
     default_bag_root = os.path.expanduser("~/bags")
 
     bag_topics_default = " ".join([
