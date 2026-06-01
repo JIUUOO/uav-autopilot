@@ -11,7 +11,7 @@ def run_hold_loop(
     drain_fn,
     readiness,
     logger,
-    hold_sec: float,
+    loiter_hold_sec: float,
     ntrip_connected_fn,
     rtcm_frames_fn,
     status_prefix: str = "LOITER hold",
@@ -36,8 +36,8 @@ def run_hold_loop(
             )
             last_print = now
 
-        if hold_sec > 0.0 and now - start >= hold_sec:
-            logger.warn("hold_sec completed.")
+        if loiter_hold_sec > 0.0 and now - start >= loiter_hold_sec:
+            logger.warn("loiter_hold_sec completed.")
             return True
 
         time.sleep(sleep_sec)

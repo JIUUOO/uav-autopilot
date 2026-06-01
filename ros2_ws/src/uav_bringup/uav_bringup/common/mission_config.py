@@ -13,7 +13,7 @@ class GuidedTakeoffMissionConfig:
     altitude_ratio: float
     timeout_sec: float
     ready_timeout_sec: float
-    hold_sec: float
+    loiter_hold_sec: float
     enable_ntrip: bool
     ntrip_host: str
     ntrip_port: int
@@ -36,7 +36,7 @@ def declare_guided_takeoff_params(node, include_land_after_hold: bool = False):
     node.declare_parameter("altitude_ratio", 0.85)  # altitude threshold for GUIDED -> LOITER mode
     node.declare_parameter("timeout_sec", 20.0)  # common timeout for heartbeat, ACK, mode, arm waits
     node.declare_parameter("ready_timeout_sec", 90.0)  # max wait for '(GPS, RTK) + optical flow' readiness before takeoff
-    node.declare_parameter("hold_sec", 0.0)  # LOITER hold seconds after takeoff
+    node.declare_parameter("loiter_hold_sec", 0.0)  # LOITER hold seconds after takeoff
 
     if include_land_after_hold:
         node.declare_parameter("land_after_hold", True)
@@ -69,7 +69,7 @@ def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> G
         altitude_ratio=float(node.get_parameter("altitude_ratio").value),
         timeout_sec=float(node.get_parameter("timeout_sec").value),
         ready_timeout_sec=float(node.get_parameter("ready_timeout_sec").value),
-        hold_sec=float(node.get_parameter("hold_sec").value),
+        loiter_hold_sec=float(node.get_parameter("loiter_hold_sec").value),
         enable_ntrip=bool(node.get_parameter("enable_ntrip").value),
         ntrip_host=str(node.get_parameter("ntrip_host").value),
         ntrip_port=int(node.get_parameter("ntrip_port").value),
@@ -82,4 +82,3 @@ def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> G
         optical_flow_timeout_sec=float(node.get_parameter("optical_flow_timeout_sec").value),
         land_after_hold=land_after_hold,
     )
-

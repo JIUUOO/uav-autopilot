@@ -65,7 +65,7 @@ class GuidedTakeoffLoiterNode(Node):
             drain_fn=self.runtime.drain_mavlink,
             readiness=self.runtime.readiness,
             logger=self.get_logger(),
-            hold_sec=self.config.hold_sec,
+            loiter_hold_sec=self.config.loiter_hold_sec,
             ntrip_connected_fn=self.runtime.is_ntrip_connected,
             rtcm_frames_fn=self.runtime.get_rtcm_frames,
         )

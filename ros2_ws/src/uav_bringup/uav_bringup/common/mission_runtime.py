@@ -44,7 +44,7 @@ class MissionRuntime:
         self.logger.info(f"min_gps_fix_type     : {self.config.min_gps_fix_type}")
         self.logger.info(f"max_hacc_m           : {self.config.max_hacc_m}")
         self.logger.info(f"require_optical_flow : {self.config.require_optical_flow}")
-        self.logger.info(f"hold_sec             : {self.config.hold_sec}")
+        self.logger.info(f"loiter_hold_sec      : {self.config.loiter_hold_sec}")
         if include_land_after_hold:
             self.logger.info(f"land_after_hold      : {self.config.land_after_hold}")
 
