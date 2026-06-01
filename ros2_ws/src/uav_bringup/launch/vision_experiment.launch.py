@@ -117,6 +117,8 @@ def generate_launch_description():
     selected_image_topic = "/uav/vision/selected_frame/image_raw"
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
+    gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_deg"
+    gimbal_state_topic = "/uav/gimbal/state"
 
     front_camera_config = PathJoinSubstitution([
         FindPackageShare("uav_camera"),
@@ -130,6 +132,8 @@ def generate_launch_description():
         selected_image_topic,
         frame_quality_topic,
         gemini_report_topic,
+        gimbal_pitch_target_topic,
+        gimbal_state_topic,
         "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
         "/tf_static",  # Static coordinate transforms such as base_link -> camera frame.
         "/mavros/state",
@@ -239,6 +243,35 @@ def generate_launch_description():
         }],
     )
 
+    gimbal_node = Node(
+        package="uav_gimbal",
+        executable="gimbal_pitch_controller",
+        name="gimbal_pitch_controller",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_gimbal")),
+        parameters=[{
+            "dry_run": LaunchConfiguration("gimbal_dry_run"),
+            "command_service": LaunchConfiguration("gimbal_command_service"),
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
+            "state_topic": LaunchConfiguration("gimbal_state_topic"),
+            "servo_channel": LaunchConfiguration("gimbal_servo_channel"),
+            "pitch_min_deg": LaunchConfiguration("gimbal_pitch_min_deg"),
+            "pitch_max_deg": LaunchConfiguration("gimbal_pitch_max_deg"),
+            "pitch_neutral_deg": LaunchConfiguration("gimbal_pitch_neutral_deg"),
+            "pwm_min": LaunchConfiguration("gimbal_pwm_min"),
+            "pwm_center": LaunchConfiguration("gimbal_pwm_center"),
+            "pwm_max": LaunchConfiguration("gimbal_pwm_max"),
+            "command_hz": LaunchConfiguration("gimbal_command_hz"),
+            "max_rate_deg_s": LaunchConfiguration("gimbal_max_rate_deg_s"),
+            "command_timeout_sec": LaunchConfiguration("gimbal_command_timeout_sec"),
+            "timeout_to_neutral": LaunchConfiguration("gimbal_timeout_to_neutral"),
+            "confidence_threshold": LaunchConfiguration("gimbal_confidence_threshold"),
+            "gemini_step_deg": LaunchConfiguration("gimbal_gemini_step_deg"),
+            "invert_gemini_direction": LaunchConfiguration("gimbal_invert_gemini_direction"),
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("experiment_mode", default_value="selector"),
         DeclareLaunchArgument("enable_mavros", default_value="true"),
@@ -249,6 +282,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_usb_cam", default_value="true"),
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
+        DeclareLaunchArgument("enable_gimbal", default_value="false"),
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
         DeclareLaunchArgument("selected_image_topic", default_value=selected_image_topic),
         DeclareLaunchArgument("frame_quality_topic", default_value=frame_quality_topic),
@@ -272,6 +306,24 @@ def generate_launch_description():
             "gemini_report_dir",
             default_value=os.path.join(experiment_root, "gemini_reports"),
         ),
+        DeclareLaunchArgument("gimbal_dry_run", default_value="true"),
+        DeclareLaunchArgument("gimbal_command_service", default_value="/mavros/cmd/command"),
+        DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
+        DeclareLaunchArgument("gimbal_state_topic", default_value=gimbal_state_topic),
+        DeclareLaunchArgument("gimbal_servo_channel", default_value="9"),
+        DeclareLaunchArgument("gimbal_pitch_min_deg", default_value="-45.0"),
+        DeclareLaunchArgument("gimbal_pitch_max_deg", default_value="20.0"),
+        DeclareLaunchArgument("gimbal_pitch_neutral_deg", default_value="0.0"),
+        DeclareLaunchArgument("gimbal_pwm_min", default_value="1200"),
+        DeclareLaunchArgument("gimbal_pwm_center", default_value="1500"),
+        DeclareLaunchArgument("gimbal_pwm_max", default_value="1800"),
+        DeclareLaunchArgument("gimbal_command_hz", default_value="5.0"),
+        DeclareLaunchArgument("gimbal_max_rate_deg_s", default_value="20.0"),
+        DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="2.0"),
+        DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
+        DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
+        DeclareLaunchArgument("gimbal_gemini_step_deg", default_value="5.0"),
+        DeclareLaunchArgument("gimbal_invert_gemini_direction", default_value="false"),
         DeclareLaunchArgument("enable_mission_node", default_value="false"),
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
@@ -300,6 +352,7 @@ def generate_launch_description():
         selector_node,
         mission_node,
         battery_node,
+        gimbal_node,
         OpaqueFunction(function=_make_gemini_node),
         OpaqueFunction(function=_make_bag_process),
     ])
