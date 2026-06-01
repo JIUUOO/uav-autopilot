@@ -99,6 +99,7 @@ class MissionRuntime:
         )
 
     def drain_mavlink(self):
+        """Drain pending MAVLink messages (queue) and update readiness state from incoming telemetry."""
         self.mav_client.drain_messages(self.readiness.process_message)
 
     def is_ntrip_connected(self) -> bool:
