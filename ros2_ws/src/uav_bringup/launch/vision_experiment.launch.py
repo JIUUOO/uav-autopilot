@@ -97,10 +97,14 @@ def _make_bag_process(context, *_args, **_kwargs):
         topics = LaunchConfiguration("bag_topics").perform(context).split()
         cmd.extend(topics)
 
-    return [
-        LogInfo(msg=f"[rosbag] output: {output_path}"),
-        ExecuteProcess(cmd=cmd, output="screen"),
-    ]
+    actions = [LogInfo(msg=f"[rosbag] output: {output_path}")]
+    if _is_true(LaunchConfiguration("bag_record_all").perform(context)):
+        actions.append(LogInfo(msg="[rosbag] topics: all"))
+    else:
+        actions.append(LogInfo(msg="[rosbag] topics: " + " ".join(topics)))
+
+    actions.append(ExecuteProcess(cmd=cmd, output="screen"))
+    return actions
 
 
 def generate_launch_description():
@@ -126,13 +130,23 @@ def generate_launch_description():
         selected_image_topic,
         frame_quality_topic,
         gemini_report_topic,
+        "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
+        "/tf_static",  # Static coordinate transforms such as base_link -> camera frame.
         "/mavros/state",
         "/mavros/extended_state",
         "/mavros/imu/data",
+        "/mavros/imu/data_raw",  # Raw angular velocity and linear acceleration before filtering.
+        "/mavros/imu/mag",  # Magnetometer data used to inspect compass/magnetic-field behavior.
         "/mavros/global_position/global",
+        "/mavros/global_position/raw/fix",  # Raw GPS fix with covariance for GNSS quality analysis.
+        "/mavros/global_position/rel_alt",  # Relative altitude from the home position.
+        "/mavros/global_position/compass_hdg",  # Compass heading reported by the flight controller.
         "/mavros/local_position/pose",
         "/mavros/local_position/velocity_local",
+        "/mavros/local_position/velocity_body",  # Body-frame velocity for motion-aware frame analysis.
         "/mavros/altitude",
+        "/mavros/vfr_hud",  # HUD-style flight summary: speed, heading, throttle, altitude, climb.
+        "/mavros/home_position/home",  # Pixhawk/MAVROS home position used as the mission reference.
         "/mavros/battery",
         "/uav/battery/voltage",
         "/rosout",
