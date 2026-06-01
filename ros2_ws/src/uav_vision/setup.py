@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'gemini_scout_report = uav_vision.gemini_scout_report_node:main',
             'frame_quality_selector = uav_vision.frame_quality_selector_node:main',
+            'gemini_frame_analyzer = uav_vision.gemini_frame_analyzer_node:main',
         ],
     },
 )
