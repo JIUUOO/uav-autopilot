@@ -29,7 +29,7 @@ class GimbalPitchControllerNode(Node):
         self.declare_parameter("pitch_target_topic", "/uav/gimbal/pitch_target_deg")
         self.declare_parameter("state_topic", "/uav/gimbal/state")
 
-        self.declare_parameter("servo_channel", 9)  # ArduPilot SERVO9 is commonly Pixhawk AUX1.
+        self.declare_parameter("servo_channel", 7)  # Pitch gimbal is wired to Pixhawk PWM OUT 7.
         self.declare_parameter("pitch_min_deg", -45.0)
         self.declare_parameter("pitch_max_deg", 20.0)
         self.declare_parameter("pitch_neutral_deg", 0.0)

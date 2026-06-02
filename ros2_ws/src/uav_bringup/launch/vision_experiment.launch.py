@@ -337,7 +337,7 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_command_service", default_value="/mavros/cmd/command"),
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
         DeclareLaunchArgument("gimbal_state_topic", default_value=gimbal_state_topic),
-        DeclareLaunchArgument("gimbal_servo_channel", default_value="9"),
+        DeclareLaunchArgument("gimbal_servo_channel", default_value="7"),
         DeclareLaunchArgument("gimbal_pitch_min_deg", default_value="-45.0"),
         DeclareLaunchArgument("gimbal_pitch_max_deg", default_value="20.0"),
         DeclareLaunchArgument("gimbal_pitch_neutral_deg", default_value="0.0"),
