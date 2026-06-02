@@ -25,12 +25,14 @@ Schema:
   "possible_targets": ["target candidate list"],
   "hazards": ["hazard list"],
   "confidence": 0.0,
+  "risk_level": "LOW | MEDIUM | HIGH | UNKNOWN",
   "recommended_action": "continue | inspect | return_home | unknown",
   "need_gimbal_adjustment": false,
   "gimbal_direction": "up | down | hold | unknown"
 }
 
 Be conservative. If there is no clear target, say no clear target.
+If a person or human is visible, explicitly include "person" in visible_objects.
 Gemini only provides perception and intent; do not output actuator commands.
 """
 
@@ -169,6 +171,9 @@ class GeminiFrameAnalyzerNode(Node):
         report.model = self.model
         report.latency_sec = float(latency_sec)
         report.parsed_ok = isinstance(parsed, dict)
+        report.risk_level = "UNKNOWN"
+        report.recommended_action = "unknown"
+        report.gimbal_direction = "unknown"
 
         if isinstance(parsed, dict):
             report.scene_summary = str(parsed.get("scene_summary", ""))
@@ -176,6 +181,7 @@ class GeminiFrameAnalyzerNode(Node):
             report.possible_targets = self.as_string_list(parsed.get("possible_targets", []))
             report.hazards = self.as_string_list(parsed.get("hazards", []))
             report.confidence = float(parsed.get("confidence", 0.0) or 0.0)
+            report.risk_level = str(parsed.get("risk_level", "UNKNOWN")).upper()
             report.recommended_action = str(parsed.get("recommended_action", "unknown"))
             report.need_gimbal_adjustment = bool(parsed.get("need_gimbal_adjustment", False))
             report.gimbal_direction = str(parsed.get("gimbal_direction", "unknown"))
@@ -203,6 +209,7 @@ class GeminiFrameAnalyzerNode(Node):
             "possible_targets": list(report.possible_targets),
             "hazards": list(report.hazards),
             "confidence": report.confidence,
+            "risk_level": report.risk_level,
             "recommended_action": report.recommended_action,
             "need_gimbal_adjustment": report.need_gimbal_adjustment,
             "gimbal_direction": report.gimbal_direction,

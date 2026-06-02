@@ -11,6 +11,7 @@ string[] visible_objects
 string[] possible_targets
 string[] hazards
 float32 confidence
+string risk_level
 string recommended_action
 
 bool need_gimbal_adjustment
