@@ -21,6 +21,7 @@ $ ros2 launch uav_bringup flight_record.launch.py \
   mission_package:=uav_bringup \
   mission_executable:=guided_takeoff_loiter \
   mission_node_name:=guided_takeoff_loiter \
+  altitude_m:=3.0 \
   loiter_hold_sec:=5.0 \
   dry_run:=false \
   ntrip_user:=<ID> \
@@ -128,6 +129,7 @@ def generate_launch_description():
         parameters=[{
             "port": LaunchConfiguration("mission_port"),
             "dry_run": LaunchConfiguration("dry_run"),
+            "altitude_m": LaunchConfiguration("altitude_m"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
             "enable_ntrip": LaunchConfiguration("enable_ntrip"),
             "ntrip_host": LaunchConfiguration("ntrip_host"),
@@ -165,6 +167,7 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_node_name", default_value="mission_node"),  # ros node
         DeclareLaunchArgument("mission_port", default_value=mission_default_port),
         DeclareLaunchArgument("dry_run", default_value="true"),
+        DeclareLaunchArgument("altitude_m", default_value="1.0"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
         DeclareLaunchArgument("ntrip_host", default_value="www.gnssdata.or.kr"),
