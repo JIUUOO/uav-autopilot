@@ -71,6 +71,10 @@ class MavlinkClient:
         with self.send_lock:
             self.master.mav.set_mode_send(*args)
 
+    def set_position_target_local_ned_send(self, *args):
+        with self.send_lock:
+            self.master.mav.set_position_target_local_ned_send(*args)
+
     def drain_messages(self, handler):
         while True:
             msg = self.master.recv_match(blocking=False)
