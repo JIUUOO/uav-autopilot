@@ -53,6 +53,8 @@ class BoundedScoutMissionNode(Node):
         self.local_y = None
         self.local_z = None
         self.last_local_position_time = 0.0
+        self.current_yaw_deg = None
+        self.last_attitude_time = 0.0
         self.origin_x = None
         self.origin_y = None
 
@@ -91,6 +93,12 @@ class BoundedScoutMissionNode(Node):
         self.declare_parameter("yaw_angles_deg", "0,90,180,270")
         self.declare_parameter("yaw_hold_sec", 2.0)
         self.declare_parameter("yaw_speed_deg_s", 20.0)  # (deg/s)
+        self.declare_parameter("yaw_acceptance_deg", 8.0)
+        self.declare_parameter("yaw_timeout_sec", 8.0)
+        self.declare_parameter("route_mode", "waypoints")
+        self.declare_parameter("square_side_m", 2.0)
+        self.declare_parameter("square_yaws_deg", "0,90,180,270")
+        self.declare_parameter("square_origin_mode", "center")
 
         # Gemini-triggered inspection behavior and safety gates.
         self.declare_parameter("gemini_report_topic", "/uav/vision/gemini_report")
@@ -123,8 +131,14 @@ class BoundedScoutMissionNode(Node):
         self.yaw_angles_deg = self.parse_float_list(str(self.get_parameter("yaw_angles_deg").value))
         self.yaw_hold_sec = float(self.get_parameter("yaw_hold_sec").value)
         self.yaw_speed_deg_s = float(self.get_parameter("yaw_speed_deg_s").value)
+        self.yaw_acceptance_deg = float(self.get_parameter("yaw_acceptance_deg").value)
+        self.yaw_timeout_sec = float(self.get_parameter("yaw_timeout_sec").value)
         self.setpoint_hz = float(self.get_parameter("setpoint_hz").value)
         self.local_position_timeout_sec = float(self.get_parameter("local_position_timeout_sec").value)
+        self.route_mode = str(self.get_parameter("route_mode").value).strip().lower()
+        self.square_side_m = float(self.get_parameter("square_side_m").value)
+        self.square_yaws_deg = self.parse_float_list(str(self.get_parameter("square_yaws_deg").value))
+        self.square_origin_mode = str(self.get_parameter("square_origin_mode").value).strip().lower()
 
         self.gemini_report_topic = str(self.get_parameter("gemini_report_topic").value)
         self.inspection_trigger_risk = str(self.get_parameter("inspection_trigger_risk").value).upper()
@@ -197,6 +211,9 @@ class BoundedScoutMissionNode(Node):
         )
 
     def run_scout_route(self) -> bool:
+        if self.route_mode == "forward_square":
+            return self.run_forward_square_route()
+
         for name, north_m, east_m in self.route_offsets():
             if not self.goto_offset(name, north_m, east_m, self.config.altitude_m):
                 return False
@@ -208,6 +225,83 @@ class BoundedScoutMissionNode(Node):
                 self.latest_report_consumed = True
                 if not self.run_low_altitude_inspection(name, north_m, east_m):
                     return False
+
+        return True
+
+    def run_forward_square_route(self) -> bool:
+        if self.square_origin_mode == "center":
+            return self.run_centered_forward_square_route()
+        if self.square_origin_mode != "corner":
+            self.get_logger().error("square_origin_mode must be either 'center' or 'corner'.")
+            return False
+
+        if len(self.square_yaws_deg) != 4:
+            self.get_logger().error("square_yaws_deg must contain exactly four yaw angles in corner mode.")
+            return False
+
+        self.get_logger().warn(
+            "Forward square corner mode: CENTER is treated as one square corner, not the square center."
+        )
+        north_m = 0.0
+        east_m = 0.0
+        for index, yaw_deg in enumerate(self.square_yaws_deg, start=1):
+            label = f"LEG{index}/yaw={yaw_deg:.0f}"
+            if not self.set_yaw(yaw_deg):
+                return False
+            if not self.hold_and_watch_reports(label=f"{label}/yaw_settle", hold_sec=self.yaw_hold_sec):
+                return False
+
+            yaw_rad = math.radians(yaw_deg)
+            north_m += math.cos(yaw_rad) * self.square_side_m
+            east_m += math.sin(yaw_rad) * self.square_side_m
+
+            if not self.goto_offset(f"FWD{index}", north_m, east_m, self.config.altitude_m):
+                return False
+            if not self.hold_and_watch_reports(label=f"FWD{index}/analysis_hold", hold_sec=self.waypoint_hold_sec):
+                return False
+
+            if self.should_run_inspection():
+                self.latest_report_consumed = True
+                if not self.run_low_altitude_inspection(f"FWD{index}", north_m, east_m):
+                    return False
+
+        return True
+
+    def run_centered_forward_square_route(self) -> bool:
+        half_side_m = self.square_side_m / 2.0
+        points = [
+            ("CORNER_NW", half_side_m, -half_side_m),
+            ("CORNER_NE", half_side_m, half_side_m),
+            ("CORNER_SE", -half_side_m, half_side_m),
+            ("CORNER_SW", -half_side_m, -half_side_m),
+            ("CORNER_NW_RETURN", half_side_m, -half_side_m),
+            ("CENTER_RETURN", 0.0, 0.0),
+        ]
+
+        current_north_m = 0.0
+        current_east_m = 0.0
+        for label, target_north_m, target_east_m in points:
+            yaw_deg = self.yaw_to_target(
+                target_north_m - current_north_m,
+                target_east_m - current_east_m,
+            )
+            if not self.set_yaw(yaw_deg):
+                return False
+            if not self.hold_and_watch_reports(label=f"{label}/yaw_settle", hold_sec=self.yaw_hold_sec):
+                return False
+
+            if not self.goto_offset(label, target_north_m, target_east_m, self.config.altitude_m):
+                return False
+            if not self.hold_and_watch_reports(label=f"{label}/analysis_hold", hold_sec=self.waypoint_hold_sec):
+                return False
+
+            if self.should_run_inspection():
+                self.latest_report_consumed = True
+                if not self.run_low_altitude_inspection(label, target_north_m, target_east_m):
+                    return False
+
+            current_north_m = target_north_m
+            current_east_m = target_east_m
 
         return True
 
@@ -389,7 +483,55 @@ class BoundedScoutMissionNode(Node):
             0,
             0,
         )
-        return True
+        return self.wait_yaw_reached(yaw_deg)
+
+    def wait_yaw_reached(self, target_yaw_deg: float) -> bool:
+        target_yaw_deg = self.normalize_angle_deg(target_yaw_deg)
+        start = time.monotonic()
+        last_print = 0.0
+
+        while rclpy.ok() and not self.stop_event.is_set():
+            now = time.monotonic()
+            self.spin_and_drain()
+
+            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
+                yaw_error_deg = abs(self.angle_diff_deg(target_yaw_deg, self.current_yaw_deg))
+                if now - last_print > 0.5:
+                    self.get_logger().info(
+                        f"Yaw wait: current={self.current_yaw_deg:.1f} deg "
+                        f"target={target_yaw_deg:.1f} deg error={yaw_error_deg:.1f} deg"
+                    )
+                    last_print = now
+
+                if yaw_error_deg <= self.yaw_acceptance_deg:
+                    self.get_logger().warn(
+                        f"Yaw reached: current={self.current_yaw_deg:.1f} deg "
+                        f"target={target_yaw_deg:.1f} deg"
+                    )
+                    return True
+
+            if now - start > self.yaw_timeout_sec:
+                self.get_logger().error(
+                    f"Yaw timeout: target={target_yaw_deg:.1f} deg "
+                    f"current={self.current_yaw_deg}"
+                )
+                return False
+
+            time.sleep(0.05)
+
+        return False
+
+    @staticmethod
+    def normalize_angle_deg(angle_deg: float) -> float:
+        return angle_deg % 360.0
+
+    @staticmethod
+    def angle_diff_deg(target_deg: float, current_deg: float) -> float:
+        return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+
+    @staticmethod
+    def yaw_to_target(delta_north_m: float, delta_east_m: float) -> float:
+        return math.degrees(math.atan2(delta_east_m, delta_north_m)) % 360.0
 
     def send_local_position_target(self, x: float, y: float, z: float):
         """Send a GUIDED position target in LOCAL_NED coordinates."""
@@ -416,6 +558,8 @@ class BoundedScoutMissionNode(Node):
     def request_scout_streams(self):
         local_position_msg_id = mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED
         self.runtime.mav_client.request_message_interval(local_position_msg_id, 5.0)
+        attitude_msg_id = mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE
+        self.runtime.mav_client.request_message_interval(attitude_msg_id, 10.0)
 
     def capture_local_origin(self, phase: str) -> bool:
         samples = []
@@ -465,6 +609,9 @@ class BoundedScoutMissionNode(Node):
             self.local_y = float(msg.y)
             self.local_z = float(msg.z)
             self.last_local_position_time = time.monotonic()
+        elif msg.get_type() == "ATTITUDE":
+            self.current_yaw_deg = self.normalize_angle_deg(math.degrees(float(msg.yaw)))
+            self.last_attitude_time = time.monotonic()
 
     def on_gemini_report(self, msg):
         self.latest_report = msg
@@ -494,7 +641,14 @@ class BoundedScoutMissionNode(Node):
         self.get_logger().info(f"require_origin_before_takeoff  : {self.require_origin_before_takeoff}")
         self.get_logger().info(f"origin_sample_count            : {self.origin_sample_count}")
         self.get_logger().info(f"local_position_timeout_sec     : {self.local_position_timeout_sec}")
+        self.get_logger().info(f"setpoint_hz                    : {self.setpoint_hz}")
+        self.get_logger().info(f"route_mode                     : {self.route_mode}")
+        self.get_logger().info(f"square_side_m                  : {self.square_side_m}")
+        self.get_logger().info(f"square_yaws_deg                : {self.square_yaws_deg}")
+        self.get_logger().info(f"square_origin_mode             : {self.square_origin_mode}")
         self.get_logger().info(f"yaw_angles_deg                 : {self.yaw_angles_deg}")
+        self.get_logger().info(f"yaw_acceptance_deg             : {self.yaw_acceptance_deg}")
+        self.get_logger().info(f"yaw_timeout_sec                : {self.yaw_timeout_sec}")
         self.get_logger().info(f"enable_low_altitude_inspection : {self.enable_low_altitude_inspection}")
         self.get_logger().info(f"inspect_altitude_m             : {self.inspect_altitude_m}")
         self.get_logger().info(f"disable_inspection_for_person  : {self.disable_inspection_for_person}")
