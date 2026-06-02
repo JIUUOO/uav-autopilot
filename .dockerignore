@@ -1,0 +1,17 @@
+.git
+.gitignore
+
+ros2_ws/build
+ros2_ws/install
+ros2_ws/log
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+
+dev/vision_dataset
+*.bag
+*.db3
+*.mcap
+*.log
+
+.DS_Store
