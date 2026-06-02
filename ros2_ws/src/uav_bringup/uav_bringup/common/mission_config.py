@@ -27,12 +27,16 @@ class GuidedTakeoffMissionConfig:
     land_after_hold: bool = False
 
 
-def declare_guided_takeoff_params(node, include_land_after_hold: bool = False):
+def declare_guided_takeoff_params(
+    node,
+    include_land_after_hold: bool = False,
+    default_altitude_m: float = 1.0,
+):
     node.declare_parameter("port", "/dev/ttyACM0")
     node.declare_parameter("baudrate", 115200)
     node.declare_parameter("dry_run", True)
 
-    node.declare_parameter("altitude_m", 1.0)  # objective altitude (GUIDED mode)
+    node.declare_parameter("altitude_m", default_altitude_m)  # objective altitude (GUIDED mode)
     node.declare_parameter("altitude_ratio", 0.85)  # altitude threshold for GUIDED -> LOITER mode
     node.declare_parameter("timeout_sec", 20.0)  # common timeout for heartbeat, ACK, mode, arm waits
     node.declare_parameter("ready_timeout_sec", 90.0)  # max wait for '(GPS, RTK) + optical flow' readiness before takeoff
