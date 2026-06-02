@@ -39,7 +39,7 @@ Or use an env file:
 ```bash
 cp docker/.env docker/.env
 # edit docker/.env
-docker compose --env-file docker/.env -f docker/compose.yml run --rm uav-autopilot bash
+docker compose --env-file docker/.env.example -f docker/compose.yml run --rm uav-autopilot bash
 ```
 
 Then run:
