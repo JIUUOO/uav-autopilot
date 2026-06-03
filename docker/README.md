@@ -10,10 +10,11 @@ From the repository root:
 docker compose -f docker/compose.yml build
 ```
 
-## Start A Shell
+## Start A Persistent Container
 
 ```bash
-docker compose -f docker/compose.yml run --rm uav-autopilot bash
+docker compose -f docker/compose.yml up -d
+docker exec -it uav-autopilot bash
 ```
 
 Inside the container:
@@ -23,6 +24,22 @@ cd /workspace/uav-autopilot/ros2_ws
 colcon build --symlink-install
 source install/setup.bash
 ```
+
+After this container exists, you can reuse it:
+
+```bash
+docker stop uav-autopilot
+docker start uav-autopilot
+docker exec -it uav-autopilot bash
+```
+
+For a one-off temporary shell, use:
+
+```bash
+docker compose -f docker/compose.yml run --rm uav-autopilot bash
+```
+
+The `--rm` container is deleted when the shell exits, so `docker start uav-autopilot` will not work for that temporary container.
 
 ## Run The Vision Experiment
 
@@ -37,15 +54,15 @@ export NTRIP_PASS="gnss"
 Or use an env file:
 
 ```bash
-cp docker/.env docker/.env
+cp docker/.env.example docker/.env
 # edit docker/.env
-docker compose --env-file docker/.env.example -f docker/compose.yml run --rm uav-autopilot bash
+docker compose --env-file docker/.env -f docker/compose.yml up -d
 ```
 
 Then run:
 
 ```bash
-docker compose -f docker/compose.yml run --rm uav-autopilot bash
+docker exec -it uav-autopilot bash
 ```
 
 Inside the container:
