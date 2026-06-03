@@ -36,6 +36,7 @@ class GimbalPitchControllerNode(Node):
         self.declare_parameter("pwm_min", 1200)
         self.declare_parameter("pwm_center", 1500)
         self.declare_parameter("pwm_max", 1800)
+        self.declare_parameter("invert_pitch_pwm", True)
 
         self.declare_parameter("command_hz", 5.0)
         self.declare_parameter("max_rate_deg_s", 20.0)
@@ -59,6 +60,7 @@ class GimbalPitchControllerNode(Node):
         self.pwm_min = int(self.get_parameter("pwm_min").value)
         self.pwm_center = int(self.get_parameter("pwm_center").value)
         self.pwm_max = int(self.get_parameter("pwm_max").value)
+        self.invert_pitch_pwm = bool(self.get_parameter("invert_pitch_pwm").value)
 
         self.command_hz = float(self.get_parameter("command_hz").value)
         self.max_rate_deg_s = float(self.get_parameter("max_rate_deg_s").value)
@@ -86,7 +88,8 @@ class GimbalPitchControllerNode(Node):
 
         self.get_logger().warn(
             f"Gimbal pitch controller started: dry_run={self.dry_run}, "
-            f"servo_channel={self.servo_channel}, service={self.command_service}"
+            f"servo_channel={self.servo_channel}, invert_pitch_pwm={self.invert_pitch_pwm}, "
+            f"service={self.command_service}"
         )
 
     def on_pitch_target(self, msg):
@@ -210,11 +213,17 @@ class GimbalPitchControllerNode(Node):
         if pitch_deg >= self.pitch_neutral_deg:
             span_deg = max(self.pitch_max_deg - self.pitch_neutral_deg, 0.001)
             ratio = (pitch_deg - self.pitch_neutral_deg) / span_deg
-            pwm = self.pwm_center + ratio * (self.pwm_max - self.pwm_center)
+            if self.invert_pitch_pwm:
+                pwm = self.pwm_center - ratio * (self.pwm_center - self.pwm_min)
+            else:
+                pwm = self.pwm_center + ratio * (self.pwm_max - self.pwm_center)
         else:
             span_deg = max(self.pitch_neutral_deg - self.pitch_min_deg, 0.001)
             ratio = (self.pitch_neutral_deg - pitch_deg) / span_deg
-            pwm = self.pwm_center - ratio * (self.pwm_center - self.pwm_min)
+            if self.invert_pitch_pwm:
+                pwm = self.pwm_center + ratio * (self.pwm_max - self.pwm_center)
+            else:
+                pwm = self.pwm_center - ratio * (self.pwm_center - self.pwm_min)
 
         return int(round(max(min(pwm, self.pwm_max), self.pwm_min)))
 
