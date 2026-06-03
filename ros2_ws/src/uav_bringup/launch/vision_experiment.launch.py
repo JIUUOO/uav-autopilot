@@ -120,10 +120,10 @@ def generate_launch_description():
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_deg"
     gimbal_state_topic = "/uav/gimbal/state"
 
-    front_camera_config = PathJoinSubstitution([
+    gimbal_camera_config = PathJoinSubstitution([
         FindPackageShare("uav_camera"),
         "config",
-        "front_camera.yaml",
+        "gimbal_camera.yaml",
     ])
 
     bag_topics_default = " ".join([
@@ -177,12 +177,12 @@ def generate_launch_description():
     usb_cam_node = Node(
         package="usb_cam",
         executable="usb_cam_node_exe",
-        name="front_usb_cam",
+        name="gimbal_camera",
         namespace="uav/camera/front",
         output="screen",
         condition=IfCondition(LaunchConfiguration("enable_usb_cam")),
         parameters=[
-            front_camera_config,
+            gimbal_camera_config,
             {"video_device": LaunchConfiguration("usb_cam_video_device")},
         ],
         remappings=[
@@ -317,7 +317,10 @@ def generate_launch_description():
         DeclareLaunchArgument("tgt_system", default_value="1"),
         DeclareLaunchArgument("tgt_component", default_value="1"),
         DeclareLaunchArgument("enable_usb_cam", default_value="true"),
-        DeclareLaunchArgument("usb_cam_video_device", default_value="/dev/video0"),
+        DeclareLaunchArgument(
+            "usb_cam_video_device",
+            default_value="/dev/video0",
+        ),
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),

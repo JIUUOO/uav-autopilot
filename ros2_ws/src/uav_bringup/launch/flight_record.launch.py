@@ -65,11 +65,11 @@ def generate_launch_description():
     mavros_default_fcu_url = "serial:///dev/ttyACM0:115200"
     mavros_default_gcs_url = "udp://:14555@127.0.0.1:14550"
     mission_default_port = "udpin:127.0.0.1:14550" # default USB port
-    # Synced front camera config from the uav_camera package.
-    front_camera_config = PathJoinSubstitution([
+    # Synced gimbal camera config from the uav_camera package.
+    gimbal_camera_config = PathJoinSubstitution([
         FindPackageShare("uav_camera"),
         "config",
-        "front_camera.yaml",
+        "gimbal_camera.yaml",
     ])
     
     default_bag_root = os.path.expanduser("~/bags")
@@ -109,11 +109,11 @@ def generate_launch_description():
     usb_cam_node = Node(
         package="usb_cam",
         executable="usb_cam_node_exe",
-        name="front_usb_cam",
+        name="gimbal_camera",
         namespace="uav/camera/front",
         output="screen",
         condition=IfCondition(LaunchConfiguration("enable_usb_cam")),
-        parameters=[front_camera_config],
+        parameters=[gimbal_camera_config],
         remappings=[
             ("image_raw", "image_raw"),
             ("camera_info", "camera_info"),

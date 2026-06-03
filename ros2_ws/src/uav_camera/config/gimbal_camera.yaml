@@ -1,0 +1,15 @@
+/uav/camera/front/gimbal_camera:
+  ros__parameters:
+    video_device: "/dev/video0"
+      # Current SJCAM capture device. The stable by-id symlink resolves to /dev/video0,
+      # but usb_cam misopens the relative symlink target as /dev/../../video0.
+      # Check:
+      #   ls -al /dev/v4l/by-id/
+      #   v4l2-ctl --list-devices
+      #   v4l2-ctl -d /dev/v4l/by-id/usb-SJCAM_4000-video-index0 --list-formats-ext
+    framerate: 30.0
+    image_width: 640
+    image_height: 480
+    pixel_format: "mjpeg2rgb"
+    frame_id: "gimbal_camera"
+    camera_name: "gimbal_camera"
