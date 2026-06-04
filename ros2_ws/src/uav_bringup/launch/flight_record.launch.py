@@ -64,14 +64,14 @@ def _make_bag_process(context, *_args, **_kwargs):
 def generate_launch_description():
     mavros_default_fcu_url = "serial:///dev/ttyACM0:115200"
     mavros_default_gcs_url = "udp://:14555@127.0.0.1:14550"
-    mission_default_port = "udpin:127.0.0.1:14550" # default USB port
+    mission_default_port = "udpin:127.0.0.1:14550"  # default USB port
     # Synced gimbal camera config from the uav_camera package.
     gimbal_camera_config = PathJoinSubstitution([
         FindPackageShare("uav_camera"),
         "config",
         "gimbal_camera.yaml",
     ])
-    
+
     default_bag_root = os.path.expanduser("~/bags")
 
     bag_topics_default = " ".join([
@@ -131,6 +131,10 @@ def generate_launch_description():
             "dry_run": LaunchConfiguration("dry_run"),
             "altitude_m": LaunchConfiguration("altitude_m"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
+            "set_land_speed_params": LaunchConfiguration("set_land_speed_params"),
+            "land_speed_cm_s": LaunchConfiguration("land_speed_cm_s"),
+            "land_speed_high_cm_s": LaunchConfiguration("land_speed_high_cm_s"),
+            "land_param_timeout_sec": LaunchConfiguration("land_param_timeout_sec"),
             "enable_ntrip": LaunchConfiguration("enable_ntrip"),
             "ntrip_host": LaunchConfiguration("ntrip_host"),
             "ntrip_port": LaunchConfiguration("ntrip_port"),
@@ -169,6 +173,10 @@ def generate_launch_description():
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("altitude_m", default_value="1.0"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
+        DeclareLaunchArgument("set_land_speed_params", default_value="true"),
+        DeclareLaunchArgument("land_speed_cm_s", default_value="30.0"),  # Final LAND descent speed near the ground (cm/s)
+        DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),  # Initial, high-altitude LAND descent speed (cm/s)
+        DeclareLaunchArgument("land_param_timeout_sec", default_value="5.0"),  # Max wait time for Pixhawk parameter confirmation (sec)
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
         DeclareLaunchArgument("ntrip_host", default_value="www.gnssdata.or.kr"),
         DeclareLaunchArgument("ntrip_port", default_value="2101"),
