@@ -75,6 +75,38 @@ class MavlinkClient:
         with self.send_lock:
             self.master.mav.set_position_target_local_ned_send(*args)
 
+    def set_param_float(self, name: str, value: float, timeout_sec: float) -> bool:
+        param_name = name.encode("ascii")
+        self.logger.warn(f"Setting FC parameter: {name}={value}")
+
+        with self.send_lock:
+            self.master.mav.param_set_send(
+                self.master.target_system,
+                self.master.target_component,
+                param_name,
+                float(value),
+                mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+            )
+
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            msg = self.master.recv_match(type="PARAM_VALUE", blocking=True, timeout=1.0)
+            if msg is None:
+                continue
+
+            received_name = msg.param_id
+            if isinstance(received_name, bytes):
+                received_name = received_name.decode("ascii", errors="ignore")
+            received_name = received_name.rstrip("\x00")
+
+            if received_name == name:
+                current_value = float(msg.param_value)
+                self.logger.warn(f"FC parameter confirmed: {name}={current_value}")
+                return abs(current_value - float(value)) < 0.01
+
+        self.logger.error(f"FC parameter set timeout: {name}")
+        return False
+
     def drain_messages(self, handler):
         while True:
             msg = self.master.recv_match(blocking=False)
