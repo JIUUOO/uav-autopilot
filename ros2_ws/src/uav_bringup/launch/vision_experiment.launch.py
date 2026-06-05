@@ -124,6 +124,7 @@ def generate_launch_description():
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
     target_feedback_topic = "/uav/vision/target_feedback"
+    person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
 
@@ -142,6 +143,7 @@ def generate_launch_description():
         gemini_trigger_topic,
         candidate_tracks_topic,
         target_feedback_topic,
+        person_position_estimate_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
         "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
@@ -392,6 +394,32 @@ def generate_launch_description():
         }],
     )
 
+    person_position_estimator_node = Node(
+        package="uav_vision",
+        executable="rtk_person_position_estimator",
+        name="rtk_person_position_estimator",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_person_position_estimator")),
+        parameters=[{
+            "target_feedback_topic": LaunchConfiguration("target_feedback_topic"),
+            "gps_topic": LaunchConfiguration("person_estimator_gps_topic"),
+            "heading_topic": LaunchConfiguration("person_estimator_heading_topic"),
+            "estimate_topic": LaunchConfiguration("person_position_estimate_topic"),
+            "feedback_timeout_sec": LaunchConfiguration("person_estimator_feedback_timeout_sec"),
+            "gps_timeout_sec": LaunchConfiguration("person_estimator_gps_timeout_sec"),
+            "heading_timeout_sec": LaunchConfiguration("person_estimator_heading_timeout_sec"),
+            "min_priority_score": LaunchConfiguration("person_estimator_min_priority_score"),
+            "require_ready_to_inspect_for_estimate": LaunchConfiguration("person_estimator_require_ready_to_inspect"),
+            "near_distance_m": LaunchConfiguration("person_estimator_near_distance_m"),
+            "far_distance_m": LaunchConfiguration("person_estimator_far_distance_m"),
+            "unknown_distance_m": LaunchConfiguration("person_estimator_unknown_distance_m"),
+            "lateral_error_gain_m": LaunchConfiguration("person_estimator_lateral_error_gain_m"),
+            "max_lateral_offset_m": LaunchConfiguration("person_estimator_max_lateral_offset_m"),
+            "horizontal_error_margin_m": LaunchConfiguration("person_estimator_horizontal_error_margin_m"),
+            "assumed_target_below_m": LaunchConfiguration("person_estimator_assumed_target_below_m"),
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("experiment_mode", default_value="selector"),
         DeclareLaunchArgument("enable_mavros", default_value="true"),
@@ -408,6 +436,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
         DeclareLaunchArgument("enable_target_feedback", default_value="false"),
+        DeclareLaunchArgument("enable_person_position_estimator", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
         DeclareLaunchArgument("enable_gimbal_scan", default_value="false"),
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
@@ -453,6 +482,21 @@ def generate_launch_description():
         DeclareLaunchArgument("feedback_approach_distance_bucket", default_value="far"),
         DeclareLaunchArgument("feedback_inspect_distance_bucket", default_value="near"),
         DeclareLaunchArgument("feedback_require_centered_for_inspect", default_value="true"),
+        DeclareLaunchArgument("person_position_estimate_topic", default_value=person_position_estimate_topic),
+        DeclareLaunchArgument("person_estimator_gps_topic", default_value="/mavros/global_position/global"),
+        DeclareLaunchArgument("person_estimator_heading_topic", default_value="/mavros/global_position/compass_hdg"),
+        DeclareLaunchArgument("person_estimator_feedback_timeout_sec", default_value="5.0"),
+        DeclareLaunchArgument("person_estimator_gps_timeout_sec", default_value="3.0"),
+        DeclareLaunchArgument("person_estimator_heading_timeout_sec", default_value="3.0"),
+        DeclareLaunchArgument("person_estimator_min_priority_score", default_value="0.50"),
+        DeclareLaunchArgument("person_estimator_require_ready_to_inspect", default_value="false"),
+        DeclareLaunchArgument("person_estimator_near_distance_m", default_value="2.0"),
+        DeclareLaunchArgument("person_estimator_far_distance_m", default_value="5.0"),
+        DeclareLaunchArgument("person_estimator_unknown_distance_m", default_value="3.0"),
+        DeclareLaunchArgument("person_estimator_lateral_error_gain_m", default_value="4.0"),
+        DeclareLaunchArgument("person_estimator_max_lateral_offset_m", default_value="2.0"),
+        DeclareLaunchArgument("person_estimator_horizontal_error_margin_m", default_value="2.0"),
+        DeclareLaunchArgument("person_estimator_assumed_target_below_m", default_value="0.0"),
         DeclareLaunchArgument("gimbal_dry_run", default_value="true"),
         DeclareLaunchArgument("gimbal_command_service", default_value="/mavros/cmd/command"),
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
@@ -556,6 +600,7 @@ def generate_launch_description():
         gimbal_scan_node,
         candidate_manager_node,
         target_feedback_node,
+        person_position_estimator_node,
         OpaqueFunction(function=_make_gemini_node),
         OpaqueFunction(function=_make_bag_process),
     ])
