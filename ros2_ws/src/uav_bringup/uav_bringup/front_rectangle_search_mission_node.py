@@ -1,0 +1,575 @@
+#!/usr/bin/env python3
+
+import math
+import threading
+import time
+
+from pymavlink import mavutil
+import rclpy
+from rclpy.node import Node
+from uav_interfaces.msg import TargetFeedback
+
+from uav_bringup.common.mission_config import declare_guided_takeoff_params
+from uav_bringup.common.mission_config import load_guided_takeoff_config
+from uav_bringup.common.mission_runtime import MissionRuntime
+
+
+"""
+Mission flow:
+1. Connect MAVLink, request LOCAL_NED/ATTITUDE telemetry, and wait for readiness.
+2. Capture LOCAL_NED origin before takeoff so the rectangle starts at the ground start point.
+3. GUIDED takeoff to altitude_m, then capture the front yaw from current attitude by default.
+4. Fly a front-facing rectangular serpentine route at fixed altitude and fixed yaw.
+5. Watch /uav/vision/target_feedback during holds, but do not command target approach yet.
+6. Return to the captured LOCAL_NED origin and switch to finish_mode, normally LOITER or LAND.
+"""
+
+# LOCAL_NED uses x=North, y=East, z=Down; altitude above home is negative z.
+# Position-only SET_POSITION_TARGET_LOCAL_NED: ignore velocity, acceleration, yaw, and yaw-rate.
+POSITION_TARGET_TYPEMASK = 3576
+
+
+class FrontRectangleSearchMissionNode(Node):
+    """
+    Search a UAV-front rectangular area using deterministic LOCAL_NED waypoints.
+
+    This is the route/search layer only. It records target feedback and can stop on an
+    inspect-ready target, but it does not perform safe standoff approach yet.
+    """
+
+    def __init__(self):
+        super().__init__("front_rectangle_search_mission_node")
+
+        declare_guided_takeoff_params(self, include_land_after_hold=True, default_altitude_m=3.5)
+        self.declare_search_params()
+
+        self.config = load_guided_takeoff_config(self, include_land_after_hold=True)
+        self.load_search_params()
+
+        self.stop_event = threading.Event()
+        self.runtime = MissionRuntime(node=self, config=self.config, stop_event=self.stop_event)
+        self.flight_ops = None
+
+        self.local_x = None
+        self.local_y = None
+        self.local_z = None
+        self.last_local_position_time = 0.0
+        self.current_yaw_deg = None
+        self.last_attitude_time = 0.0
+        self.origin_x = None
+        self.origin_y = None
+        self.front_yaw_deg_active = None
+
+        self.latest_feedback = None
+        self.latest_feedback_time = 0.0
+
+        self.create_subscription(
+            TargetFeedback,
+            self.target_feedback_topic,
+            self.on_target_feedback,
+            10,
+        )
+
+        self.run_once()
+
+    def declare_search_params(self):
+        # Front-rectangle search geometry in body frame: forward is UAV front, right is UAV right.
+        self.declare_parameter("front_length_m", 8.0)
+        self.declare_parameter("front_width_m", 4.0)
+        self.declare_parameter("front_lane_count", 3)
+        self.declare_parameter("front_points_per_lane", 3)
+        self.declare_parameter("use_current_yaw_as_front", True)
+        self.declare_parameter("front_yaw_deg", 0.0)
+
+        # LOCAL_NED reference, route bounds, and waypoint movement control.
+        self.declare_parameter("require_origin_before_takeoff", True)
+        self.declare_parameter("origin_sample_count", 5)  # LOCAL_NED samples averaged before route generation.
+        self.declare_parameter("software_radius_m", 10.0)
+        self.declare_parameter("waypoint_acceptance_m", 0.8)
+        self.declare_parameter("waypoint_timeout_sec", 30.0)
+        self.declare_parameter("setpoint_hz", 2.0)  # Position setpoint send rate to Pixhawk (Hz).
+        self.declare_parameter("local_position_timeout_sec", 5.0)
+
+        # Fixed-yaw scan timing and target-feedback observation.
+        self.declare_parameter("route_hold_sec", 2.0)
+        self.declare_parameter("yaw_speed_deg_s", 20.0)  # (deg/s)
+        self.declare_parameter("yaw_acceptance_deg", 8.0)
+        self.declare_parameter("yaw_timeout_sec", 8.0)
+        self.declare_parameter("target_feedback_topic", "/uav/vision/target_feedback")
+        self.declare_parameter("target_feedback_timeout_sec", 5.0)
+        self.declare_parameter("stop_on_ready_to_inspect", False)
+
+        # Mission exit behavior.
+        self.declare_parameter("finish_mode", "LOITER")
+        self.declare_parameter("abort_mode", "RTL")  # Return to Launch
+
+    def load_search_params(self):
+        self.front_length_m = float(self.get_parameter("front_length_m").value)
+        self.front_width_m = float(self.get_parameter("front_width_m").value)
+        self.front_lane_count = max(int(self.get_parameter("front_lane_count").value), 1)
+        self.front_points_per_lane = max(int(self.get_parameter("front_points_per_lane").value), 2)
+        self.use_current_yaw_as_front = bool(self.get_parameter("use_current_yaw_as_front").value)
+        self.front_yaw_deg = float(self.get_parameter("front_yaw_deg").value)
+
+        self.require_origin_before_takeoff = bool(self.get_parameter("require_origin_before_takeoff").value)
+        self.origin_sample_count = max(int(self.get_parameter("origin_sample_count").value), 1)
+        self.software_radius_m = float(self.get_parameter("software_radius_m").value)
+        self.waypoint_acceptance_m = float(self.get_parameter("waypoint_acceptance_m").value)
+        self.waypoint_timeout_sec = float(self.get_parameter("waypoint_timeout_sec").value)
+        self.setpoint_hz = float(self.get_parameter("setpoint_hz").value)
+        self.local_position_timeout_sec = float(self.get_parameter("local_position_timeout_sec").value)
+
+        self.route_hold_sec = float(self.get_parameter("route_hold_sec").value)
+        self.yaw_speed_deg_s = float(self.get_parameter("yaw_speed_deg_s").value)
+        self.yaw_acceptance_deg = float(self.get_parameter("yaw_acceptance_deg").value)
+        self.yaw_timeout_sec = float(self.get_parameter("yaw_timeout_sec").value)
+        self.target_feedback_topic = str(self.get_parameter("target_feedback_topic").value)
+        self.target_feedback_timeout_sec = float(self.get_parameter("target_feedback_timeout_sec").value)
+        self.stop_on_ready_to_inspect = bool(self.get_parameter("stop_on_ready_to_inspect").value)
+
+        self.finish_mode = str(self.get_parameter("finish_mode").value).upper()
+        self.abort_mode = str(self.get_parameter("abort_mode").value).upper()
+
+    def run_once(self):
+        self.runtime.log_config("=== Front Rectangle Search Mission ===", include_land_after_hold=True)
+        self.log_search_config()
+
+        if not self.runtime.connect_and_prepare(stream_hz=5.0, include_flow_rad=True):
+            self.runtime.finish()
+            return
+
+        self.request_search_streams()
+        self.flight_ops = self.runtime.make_flight_ops()
+
+        if self.runtime.stop_if_dry_run("Dry-run enabled. Front rectangle movement/arm/takeoff commands not sent."):
+            return
+
+        origin_captured = self.capture_local_origin("pre_takeoff")
+        if not origin_captured and self.require_origin_before_takeoff:
+            self.abort_mission("pre_takeoff_origin_failed", set_abort_mode=False)
+            return
+
+        if not self.takeoff_to_search_altitude():
+            self.abort_mission("takeoff_failed")
+            return
+
+        if not origin_captured and not self.capture_local_origin("post_takeoff"):
+            self.abort_mission("local_origin_failed")
+            return
+
+        if not self.capture_front_yaw():
+            self.abort_mission("front_yaw_capture_failed")
+            return
+
+        if not self.set_yaw(self.front_yaw_deg_active):
+            self.abort_mission("front_yaw_set_failed")
+            return
+
+        if not self.run_front_rectangle_route():
+            self.abort_mission("front_rectangle_route_failed")
+            return
+
+        if not self.goto_offset("CENTER_RETURN", 0.0, 0.0, self.config.altitude_m):
+            self.abort_mission("return_center_failed")
+            return
+
+        self.finish_mission()
+
+    def takeoff_to_search_altitude(self) -> bool:
+        if not self.flight_ops.set_mode("GUIDED"):
+            return False
+        if not self.flight_ops.arm():
+            return False
+        if not self.flight_ops.wait_armed():
+            return False
+        if not self.flight_ops.takeoff(self.config.altitude_m):
+            return False
+        return self.flight_ops.wait_altitude_reached(
+            self.config.altitude_m,
+            self.config.altitude_ratio,
+        )
+
+    def run_front_rectangle_route(self) -> bool:
+        route = self.front_rectangle_offsets()
+        if not route:
+            self.get_logger().error("Front rectangle route is empty.")
+            return False
+
+        for label, north_m, east_m in route:
+            if not self.set_yaw(self.front_yaw_deg_active):
+                return False
+            if not self.goto_offset(label, north_m, east_m, self.config.altitude_m):
+                return False
+            if not self.hold_and_watch_feedback(label=label, hold_sec=self.route_hold_sec):
+                return False
+            if self.stop_on_ready_to_inspect and self.feedback_ready_to_inspect():
+                self.get_logger().warn("Stopping search: target feedback is ready_to_inspect.")
+                return True
+
+        return True
+
+    def front_rectangle_offsets(self):
+        lanes = self.lane_offsets(self.front_width_m, self.front_lane_count)
+        forward_values = [
+            self.front_length_m * index / (self.front_points_per_lane - 1)
+            for index in range(self.front_points_per_lane)
+        ]
+
+        route = []
+        waypoint_index = 1
+        for lane_index, right_m in enumerate(lanes):
+            lane_forward_values = forward_values
+            if lane_index % 2 == 1:
+                lane_forward_values = list(reversed(forward_values))
+
+            for forward_m in lane_forward_values:
+                north_m, east_m = self.body_to_local_offset(forward_m, right_m)
+                label = f"FRONT_RECT_{waypoint_index:02d}_F{forward_m:.1f}_R{right_m:.1f}"
+                if not self.target_inside_radius(north_m, east_m, self.software_radius_m):
+                    self.get_logger().error(
+                        f"Generated waypoint outside software radius: {label} "
+                        f"radius={math.hypot(north_m, east_m):.2f}m"
+                    )
+                    return []
+                route.append((label, north_m, east_m))
+                waypoint_index += 1
+
+        return route
+
+    def body_to_local_offset(self, forward_m: float, right_m: float):
+        yaw_rad = math.radians(self.front_yaw_deg_active)
+        north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
+        east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
+        return north_m, east_m
+
+    @staticmethod
+    def lane_offsets(width_m: float, lane_count: int):
+        if lane_count <= 1:
+            return [0.0]
+        return [
+            -width_m / 2.0 + width_m * index / (lane_count - 1)
+            for index in range(lane_count)
+        ]
+
+    def goto_offset(self, label: str, north_m: float, east_m: float, altitude_m: float) -> bool:
+        if not self.target_inside_radius(north_m, east_m, self.software_radius_m):
+            self.get_logger().error(
+                f"Refusing waypoint {label}: radius={math.hypot(north_m, east_m):.2f}m "
+                f"> software_radius_m={self.software_radius_m:.2f}m"
+            )
+            return False
+
+        target_x = self.origin_x + north_m
+        target_y = self.origin_y + east_m
+        target_z = -altitude_m
+
+        self.get_logger().warn(f"Goto {label}: north={north_m:.1f}m east={east_m:.1f}m alt={altitude_m:.1f}m")
+
+        start = time.monotonic()
+        next_send = 0.0
+        send_period = 1.0 / max(self.setpoint_hz, 0.1)
+
+        while rclpy.ok() and not self.stop_event.is_set():
+            now = time.monotonic()
+            self.spin_and_drain()
+
+            if not self.local_position_fresh(now):
+                self.get_logger().error("Local position timeout during waypoint movement.")
+                return False
+
+            if self.current_radius_m() > self.software_radius_m:
+                self.get_logger().error("Software radius breach detected during waypoint movement.")
+                return False
+
+            if now >= next_send:
+                self.send_local_position_target(target_x, target_y, target_z)
+                next_send = now + send_period
+
+            distance_xy = math.hypot(self.local_x - target_x, self.local_y - target_y)
+            if distance_xy <= self.waypoint_acceptance_m:
+                return True
+
+            if now - start > self.waypoint_timeout_sec:
+                self.get_logger().error(f"Waypoint timeout: {label}")
+                return False
+
+            time.sleep(0.05)
+
+        return False
+
+    def hold_and_watch_feedback(self, *, label: str, hold_sec: float) -> bool:
+        start = time.monotonic()
+        last_print = 0.0
+
+        while rclpy.ok() and not self.stop_event.is_set():
+            now = time.monotonic()
+            self.spin_and_drain()
+
+            if not self.local_position_fresh(now):
+                self.get_logger().error("Local position timeout during hold.")
+                return False
+
+            if self.current_radius_m() > self.software_radius_m:
+                self.get_logger().error("Software radius breach detected during hold.")
+                return False
+
+            if now - last_print > 2.0:
+                self.log_hold_status(label, now)
+                last_print = now
+
+            if self.stop_on_ready_to_inspect and self.feedback_ready_to_inspect():
+                return True
+
+            if now - start >= hold_sec:
+                return True
+
+            time.sleep(0.05)
+
+        return False
+
+    def log_hold_status(self, label: str, now: float):
+        feedback_summary = "feedback=none"
+        if self.latest_feedback is not None:
+            age_sec = now - self.latest_feedback_time
+            feedback_summary = (
+                f"feedback_age={age_sec:.1f}s motion={self.latest_feedback.motion_command} "
+                f"track={self.latest_feedback.track_id} ready={self.latest_feedback.ready_to_inspect}"
+            )
+
+        self.get_logger().info(
+            f"Hold {label}: radius={self.current_radius_m():.2f}m "
+            f"alt={self.current_altitude_m():.2f}m {feedback_summary}"
+        )
+
+    def feedback_ready_to_inspect(self) -> bool:
+        if self.latest_feedback is None:
+            return False
+        if time.monotonic() - self.latest_feedback_time > self.target_feedback_timeout_sec:
+            return False
+        return bool(self.latest_feedback.has_target and self.latest_feedback.ready_to_inspect)
+
+    def capture_front_yaw(self) -> bool:
+        if not self.use_current_yaw_as_front:
+            self.front_yaw_deg_active = self.normalize_angle_deg(self.front_yaw_deg)
+            self.get_logger().warn(f"Front yaw fixed from parameter: {self.front_yaw_deg_active:.1f} deg")
+            return True
+
+        start = time.monotonic()
+        while time.monotonic() - start < self.local_position_timeout_sec:
+            self.spin_and_drain()
+            now = time.monotonic()
+            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
+                self.front_yaw_deg_active = self.current_yaw_deg
+                self.get_logger().warn(f"Front yaw captured from current attitude: {self.front_yaw_deg_active:.1f} deg")
+                return True
+            time.sleep(0.05)
+
+        self.get_logger().error("Failed to capture current yaw as front direction.")
+        return False
+
+    def set_yaw(self, yaw_deg: float) -> bool:
+        """Ask ArduPilot to rotate toward the target yaw while staying in GUIDED mode."""
+
+        self.runtime.mav_client.command_long_send(
+            self.runtime.mav_client.master.target_system,
+            self.runtime.mav_client.master.target_component,
+            mavutil.mavlink.MAV_CMD_CONDITION_YAW,
+            0,
+            yaw_deg,
+            self.yaw_speed_deg_s,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        return self.wait_yaw_reached(yaw_deg)
+
+    def wait_yaw_reached(self, target_yaw_deg: float) -> bool:
+        target_yaw_deg = self.normalize_angle_deg(target_yaw_deg)
+        start = time.monotonic()
+        last_print = 0.0
+
+        while rclpy.ok() and not self.stop_event.is_set():
+            now = time.monotonic()
+            self.spin_and_drain()
+
+            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
+                yaw_error_deg = abs(self.angle_diff_deg(target_yaw_deg, self.current_yaw_deg))
+                if now - last_print > 1.0:
+                    self.get_logger().info(
+                        f"Yaw wait: current={self.current_yaw_deg:.1f} deg "
+                        f"target={target_yaw_deg:.1f} deg error={yaw_error_deg:.1f} deg"
+                    )
+                    last_print = now
+
+                if yaw_error_deg <= self.yaw_acceptance_deg:
+                    return True
+
+            if now - start > self.yaw_timeout_sec:
+                self.get_logger().error(
+                    f"Yaw timeout: target={target_yaw_deg:.1f} deg current={self.current_yaw_deg}"
+                )
+                return False
+
+            time.sleep(0.05)
+
+        return False
+
+    def send_local_position_target(self, x: float, y: float, z: float):
+        """Send a GUIDED position target in LOCAL_NED coordinates."""
+
+        self.runtime.mav_client.set_position_target_local_ned_send(
+            int(time.monotonic() * 1000) & 0xFFFFFFFF,
+            self.runtime.mav_client.master.target_system,
+            self.runtime.mav_client.master.target_component,
+            mavutil.mavlink.MAV_FRAME_LOCAL_NED,
+            POSITION_TARGET_TYPEMASK,
+            x,
+            y,
+            z,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+
+    def request_search_streams(self):
+        self.runtime.mav_client.request_message_interval(
+            mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,
+            5.0,
+        )
+        self.runtime.mav_client.request_message_interval(
+            mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
+            10.0,
+        )
+
+    def capture_local_origin(self, phase: str) -> bool:
+        samples = []
+        last_sample_time = 0.0
+        start = time.monotonic()
+        while time.monotonic() - start < self.local_position_timeout_sec:
+            self.spin_and_drain()
+            if (
+                self.local_x is not None
+                and self.local_position_fresh(time.monotonic())
+                and self.last_local_position_time > last_sample_time
+            ):
+                samples.append((self.local_x, self.local_y))
+                last_sample_time = self.last_local_position_time
+
+            if len(samples) >= self.origin_sample_count:
+                self.origin_x = sum(sample[0] for sample in samples) / len(samples)
+                self.origin_y = sum(sample[1] for sample in samples) / len(samples)
+                self.get_logger().warn(
+                    f"Local origin captured ({phase}): "
+                    f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
+                )
+                return True
+
+            time.sleep(0.05)
+
+        if samples:
+            self.origin_x = sum(sample[0] for sample in samples) / len(samples)
+            self.origin_y = sum(sample[1] for sample in samples) / len(samples)
+            self.get_logger().warn(
+                f"Local origin captured ({phase}, limited samples): "
+                f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
+            )
+            return True
+
+        self.get_logger().error(f"Failed to capture local origin ({phase}).")
+        return False
+
+    def drain_mavlink(self):
+        self.runtime.mav_client.drain_messages(self.on_mavlink_message)
+
+    def on_mavlink_message(self, msg):
+        self.runtime.readiness.process_message(msg)
+
+        if msg.get_type() == "LOCAL_POSITION_NED":
+            self.local_x = float(msg.x)
+            self.local_y = float(msg.y)
+            self.local_z = float(msg.z)
+            self.last_local_position_time = time.monotonic()
+        elif msg.get_type() == "ATTITUDE":
+            self.current_yaw_deg = self.normalize_angle_deg(math.degrees(float(msg.yaw)))
+            self.last_attitude_time = time.monotonic()
+
+    def on_target_feedback(self, msg):
+        self.latest_feedback = msg
+        self.latest_feedback_time = time.monotonic()
+
+    def spin_and_drain(self):
+        rclpy.spin_once(self, timeout_sec=0.0)
+        self.drain_mavlink()
+
+    def finish_mission(self):
+        if self.finish_mode:
+            self.flight_ops.set_mode(self.finish_mode)
+        self.runtime.finish()
+
+    def abort_mission(self, reason: str, set_abort_mode: bool = True):
+        self.get_logger().error(f"Mission abort: {reason}")
+        if set_abort_mode and self.flight_ops is not None and self.abort_mode:
+            self.flight_ops.set_mode(self.abort_mode)
+        self.runtime.finish()
+
+    def log_search_config(self):
+        self.get_logger().info(f"front_length_m               : {self.front_length_m}")
+        self.get_logger().info(f"front_width_m                : {self.front_width_m}")
+        self.get_logger().info(f"front_lane_count             : {self.front_lane_count}")
+        self.get_logger().info(f"front_points_per_lane        : {self.front_points_per_lane}")
+        self.get_logger().info(f"use_current_yaw_as_front     : {self.use_current_yaw_as_front}")
+        self.get_logger().info(f"front_yaw_deg                : {self.front_yaw_deg}")
+        self.get_logger().info(f"software_radius_m            : {self.software_radius_m}")
+        self.get_logger().info(f"waypoint_acceptance_m        : {self.waypoint_acceptance_m}")
+        self.get_logger().info(f"setpoint_hz                  : {self.setpoint_hz}")
+        self.get_logger().info(f"route_hold_sec               : {self.route_hold_sec}")
+        self.get_logger().info(f"target_feedback_topic        : {self.target_feedback_topic}")
+        self.get_logger().info(f"stop_on_ready_to_inspect     : {self.stop_on_ready_to_inspect}")
+        self.get_logger().info(f"finish_mode                  : {self.finish_mode}")
+        self.get_logger().info(f"abort_mode                   : {self.abort_mode}")
+
+    def current_radius_m(self) -> float:
+        if self.local_x is None or self.origin_x is None:
+            return 0.0
+        return math.hypot(self.local_x - self.origin_x, self.local_y - self.origin_y)
+
+    def current_altitude_m(self) -> float:
+        if self.local_z is None:
+            return 0.0
+        return -self.local_z
+
+    def local_position_fresh(self, now: float) -> bool:
+        return (
+            self.local_x is not None
+            and now - self.last_local_position_time <= self.local_position_timeout_sec
+        )
+
+    @staticmethod
+    def target_inside_radius(north_m: float, east_m: float, radius_m: float) -> bool:
+        return math.hypot(north_m, east_m) <= radius_m
+
+    @staticmethod
+    def normalize_angle_deg(angle_deg: float) -> float:
+        return angle_deg % 360.0
+
+    @staticmethod
+    def angle_diff_deg(target_deg: float, current_deg: float) -> float:
+        return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = FrontRectangleSearchMissionNode()
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

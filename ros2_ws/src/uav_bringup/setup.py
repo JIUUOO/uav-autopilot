@@ -32,6 +32,7 @@ setup(
             'guided_takeoff_loiter = uav_bringup.guided_takeoff_loiter_node:main',
             'guided_takeoff_loiter_land = uav_bringup.guided_takeoff_loiter_land_node:main',
             'bounded_scout_mission = uav_bringup.bounded_scout_mission_node:main',
+            'front_rectangle_search_mission = uav_bringup.front_rectangle_search_mission_node:main',
         ],
     },
 )
