@@ -7,6 +7,7 @@ import threading
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from uav_vision.common.image_utils import image_msg_to_pil
 
 
 REPORT_PROMPT = """You are observing a UAV camera frame for a flight test.
@@ -91,7 +92,7 @@ class GeminiScoutReportNode(Node):
 
     def run_report(self, msg):
         try:
-            image = self.image_msg_to_pil(msg)
+            image = image_msg_to_pil(msg)
             if image.width > self.max_width:
                 new_height = int(image.height * (self.max_width / image.width))
                 image = image.resize((self.max_width, new_height))
@@ -117,45 +118,6 @@ class GeminiScoutReportNode(Node):
             self.get_logger().error(f"Gemini scout report failed: {exc}")
         finally:
             self.inflight = False
-
-    @staticmethod
-    def image_msg_to_pil(msg):
-        try:
-            from PIL import Image as PILImage
-        except ImportError as exc:
-            raise RuntimeError("Missing Pillow. Install/rebuild Docker image first.") from exc
-
-        encoding = msg.encoding.lower()
-        data = bytes(msg.data)
-
-        formats = {
-            "rgb8": ("RGB", "RGB", 3),
-            "bgr8": ("RGB", "BGR", 3),
-            "rgba8": ("RGBA", "RGBA", 4),
-            "bgra8": ("RGBA", "BGRA", 4),
-            "mono8": ("L", "L", 1),
-        }
-        if encoding not in formats:
-            raise RuntimeError(f"Unsupported image encoding: {msg.encoding}")
-
-        mode, raw_mode, bytes_per_pixel = formats[encoding]
-        expected_step = msg.width * bytes_per_pixel
-        if msg.step < expected_step:
-            raise RuntimeError(
-                f"Invalid image step: step={msg.step}, expected>={expected_step}"
-            )
-
-        if msg.step == expected_step:
-            raw = data[:expected_step * msg.height]
-        else:
-            rows = []
-            for row in range(msg.height):
-                start = row * msg.step
-                rows.append(data[start:start + expected_step])
-            raw = b"".join(rows)
-
-        return PILImage.frombytes(mode, (msg.width, msg.height), raw, "raw", raw_mode)
-
 
 def main(args=None):
     rclpy.init(args=args)

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import io
-import json
 import os
 import threading
 import time
@@ -11,7 +10,15 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from uav_interfaces.msg import GeminiReport
-from uav_interfaces.msg import PersonCandidate
+from uav_vision.common.gemini_utils import append_error
+from uav_vision.common.gemini_utils import as_bool
+from uav_vision.common.gemini_utils import as_person_candidates
+from uav_vision.common.gemini_utils import find_candidate
+from uav_vision.common.gemini_utils import gimbal_preset_for_candidate
+from uav_vision.common.gemini_utils import make_request_id
+from uav_vision.common.gemini_utils import parse_json_response
+from uav_vision.common.gemini_utils import select_primary_candidate_index
+from uav_vision.common.image_utils import image_msg_to_pil
 
 
 PROMPT_VERSION = "person_bbox_v1"
@@ -137,10 +144,10 @@ class GeminiFrameAnalyzerNode(Node):
         parsed = None
         error_message = ""
         call_index = self.report_index + 1
-        request_id = self.make_request_id(msg, call_index)
+        request_id = make_request_id(msg, call_index)
 
         try:
-            image = self.image_msg_to_pil(msg)
+            image = image_msg_to_pil(msg)
             if image.width > self.max_width:
                 new_height = int(image.height * (self.max_width / image.width))
                 image = image.resize((self.max_width, new_height))
@@ -158,7 +165,7 @@ class GeminiFrameAnalyzerNode(Node):
             )
 
             raw_text = (response.text or "").strip()
-            parsed = self.parse_json_response(raw_text)
+            parsed = parse_json_response(raw_text)
             if not isinstance(parsed, dict):
                 error_message = "Gemini response was not valid JSON."
         except Exception as exc:
@@ -180,7 +187,7 @@ class GeminiFrameAnalyzerNode(Node):
                 try:
                     self.write_report_file(report)
                 except Exception as exc:
-                    report.error_message = self.append_error(
+                    report.error_message = append_error(
                         report.error_message,
                         f"Failed to save report: {exc}",
                     )
@@ -216,22 +223,22 @@ class GeminiFrameAnalyzerNode(Node):
 
         if isinstance(parsed, dict):
             report.scene_summary = str(parsed.get("scene_summary", ""))
-            report.person_candidates = self.as_person_candidates(
+            report.person_candidates = as_person_candidates(
                 parsed.get("person_candidates", [])
             )
             report.person_detected = (
-                self.as_bool(parsed.get("person_detected", False))
+                as_bool(parsed.get("person_detected", False))
                 or bool(report.person_candidates)
             )
-            report.primary_candidate_index = self.select_primary_candidate_index(
+            report.primary_candidate_index = select_primary_candidate_index(
                 parsed.get("primary_candidate_index", -1),
                 report.person_candidates,
             )
-            primary_candidate = self.find_candidate(
+            primary_candidate = find_candidate(
                 report.person_candidates,
                 report.primary_candidate_index,
             )
-            report.recommended_gimbal_preset = self.gimbal_preset_for_candidate(
+            report.recommended_gimbal_preset = gimbal_preset_for_candidate(
                 primary_candidate
             )
 
@@ -283,167 +290,6 @@ class GeminiFrameAnalyzerNode(Node):
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
         return path
-
-    @staticmethod
-    def make_request_id(msg, call_index):
-        return f"{msg.header.stamp.sec}-{msg.header.stamp.nanosec}-{call_index:04d}"
-
-    @staticmethod
-    def append_error(current, new_error):
-        return f"{current}; {new_error}" if current else new_error
-
-    @staticmethod
-    def parse_json_response(raw_text):
-        text = raw_text.strip()
-        if text.startswith("```"):
-            lines = text.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            text = "\n".join(lines).strip()
-
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
-
-    @classmethod
-    def as_person_candidates(cls, value):
-        """Convert Gemini JSON person candidates into validated PersonCandidate messages."""
-
-        if not isinstance(value, list):
-            return []
-
-        candidates = []
-        for fallback_index, item in enumerate(value):
-            if not isinstance(item, dict):
-                continue
-
-            bbox = item.get("bbox_norm", {})
-            if not isinstance(bbox, dict):
-                bbox = {}
-
-            candidate = PersonCandidate()
-            candidate.candidate_index = fallback_index
-            candidate.confidence = cls.clamp_unit(item.get("confidence", 0.0))
-            candidate.bbox_x_min_norm = cls.clamp_unit(bbox.get("x_min", 0.0))
-            candidate.bbox_y_min_norm = cls.clamp_unit(bbox.get("y_min", 0.0))
-            candidate.bbox_x_max_norm = cls.clamp_unit(bbox.get("x_max", 0.0))
-            candidate.bbox_y_max_norm = cls.clamp_unit(bbox.get("y_max", 0.0))
-            candidate.distance_bucket = cls.choice_or_unknown(
-                item.get("distance_bucket", "unknown"),
-                {"far", "near", "unknown"},
-            )
-
-            if (
-                candidate.bbox_x_min_norm >= candidate.bbox_x_max_norm
-                or candidate.bbox_y_min_norm >= candidate.bbox_y_max_norm
-            ):
-                continue
-
-            candidates.append(candidate)
-
-        return candidates
-
-    @classmethod
-    def select_primary_candidate_index(cls, requested_index, candidates):
-        """Use Gemini's primary index when valid, otherwise choose the highest-confidence candidate."""
-
-        requested_index = cls.as_int(requested_index, default=-1)
-        if cls.find_candidate(candidates, requested_index) is not None:
-            return requested_index
-        if not candidates:
-            return -1
-        return max(candidates, key=lambda candidate: candidate.confidence).candidate_index
-
-    @staticmethod
-    def find_candidate(candidates, candidate_index):
-        """Return the candidate with the requested index, or None if it is missing."""
-
-        return next(
-            (
-                candidate
-                for candidate in candidates
-                if candidate.candidate_index == candidate_index
-            ),
-            None,
-        )
-
-    @staticmethod
-    def gimbal_preset_for_candidate(candidate):
-        """Map a candidate's visual distance bucket to a rule-based gimbal preset."""
-
-        if candidate is None:
-            return "HOLD"
-        if candidate.distance_bucket == "far":
-            return "PRESET_FAR"
-        if candidate.distance_bucket == "near":
-            return "PRESET_NEAR"
-        return "HOLD"
-
-    @staticmethod
-    def as_int(value, default):
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            return default
-
-    @staticmethod
-    def as_bool(value):
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in {"1", "true", "yes"}
-        return bool(value)
-
-    @staticmethod
-    def clamp_unit(value):
-        try:
-            return min(max(float(value), 0.0), 1.0)
-        except (TypeError, ValueError):
-            return 0.0
-
-    @staticmethod
-    def choice_or_unknown(value, choices):
-        normalized = str(value).strip().lower()
-        return normalized if normalized in choices else "unknown"
-
-    @staticmethod
-    def image_msg_to_pil(msg):
-        try:
-            from PIL import Image as PILImage
-        except ImportError as exc:
-            raise RuntimeError("Missing Pillow. Install/rebuild Docker image first.") from exc
-
-        encoding = msg.encoding.lower()
-        data = bytes(msg.data)
-
-        formats = {
-            "rgb8": ("RGB", "RGB", 3),
-            "bgr8": ("RGB", "BGR", 3),
-            "rgba8": ("RGBA", "RGBA", 4),
-            "bgra8": ("RGBA", "BGRA", 4),
-            "mono8": ("L", "L", 1),
-        }
-        if encoding not in formats:
-            raise RuntimeError(f"Unsupported image encoding: {msg.encoding}")
-
-        mode, raw_mode, bytes_per_pixel = formats[encoding]
-        expected_step = msg.width * bytes_per_pixel
-        if msg.step < expected_step:
-            raise RuntimeError(f"Invalid image step: step={msg.step}, expected>={expected_step}")
-
-        if msg.step == expected_step:
-            raw = data[:expected_step * msg.height]
-        else:
-            rows = []
-            for row in range(msg.height):
-                start = row * msg.step
-                rows.append(data[start:start + expected_step])
-            raw = b"".join(rows)
-
-        return PILImage.frombytes(mode, (msg.width, msg.height), raw, "raw", raw_mode)
 
 
 def main(args=None):
