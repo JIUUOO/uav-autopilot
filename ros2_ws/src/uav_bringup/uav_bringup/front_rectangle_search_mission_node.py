@@ -20,7 +20,7 @@ Mission flow:
 2. Capture LOCAL_NED origin before takeoff so the rectangle starts at the ground start point.
 3. GUIDED takeoff to altitude_m, then capture the front yaw from current attitude by default.
 4. Fly a front-facing rectangular serpentine route at fixed altitude and fixed yaw.
-5. Watch /uav/vision/target_feedback during holds, but do not command target approach yet.
+5. Optionally execute short, bounded body-frame steps from /uav/vision/target_feedback.
 6. Return to the captured LOCAL_NED origin and switch to finish_mode, normally LOITER or LAND.
 """
 
@@ -33,8 +33,8 @@ class FrontRectangleSearchMissionNode(Node):
     """
     Search a UAV-front rectangular area using deterministic LOCAL_NED waypoints.
 
-    This is the route/search layer only. It records target feedback and can stop on an
-    inspect-ready target, but it does not perform safe standoff approach yet.
+    Target-feedback movement is opt-in and remains constrained by fixed altitude,
+    software radius, step clamps, cooldown, and max movement counts.
     """
 
     def __init__(self):
@@ -62,6 +62,8 @@ class FrontRectangleSearchMissionNode(Node):
 
         self.latest_feedback = None
         self.latest_feedback_time = 0.0
+        self.last_feedback_move_time = 0.0
+        self.total_feedback_moves = 0
 
         self.create_subscription(
             TargetFeedback,
@@ -99,6 +101,15 @@ class FrontRectangleSearchMissionNode(Node):
         self.declare_parameter("target_feedback_timeout_sec", 5.0)
         self.declare_parameter("stop_on_ready_to_inspect", False)
 
+        # Optional closed-loop target-feedback movement; kept off by default for safety.
+        self.declare_parameter("enable_target_feedback_movement", False)
+        self.declare_parameter("max_feedback_step_m", 0.5)
+        self.declare_parameter("feedback_move_acceptance_m", 0.4)
+        self.declare_parameter("feedback_move_timeout_sec", 10.0)
+        self.declare_parameter("feedback_move_cooldown_sec", 2.0)
+        self.declare_parameter("max_feedback_moves_per_waypoint", 1)
+        self.declare_parameter("max_total_feedback_moves", 5)
+
         # Mission exit behavior.
         self.declare_parameter("finish_mode", "LOITER")
         self.declare_parameter("abort_mode", "RTL")  # Return to Launch
@@ -126,6 +137,19 @@ class FrontRectangleSearchMissionNode(Node):
         self.target_feedback_topic = str(self.get_parameter("target_feedback_topic").value)
         self.target_feedback_timeout_sec = float(self.get_parameter("target_feedback_timeout_sec").value)
         self.stop_on_ready_to_inspect = bool(self.get_parameter("stop_on_ready_to_inspect").value)
+        self.enable_target_feedback_movement = bool(self.get_parameter("enable_target_feedback_movement").value)
+        self.max_feedback_step_m = float(self.get_parameter("max_feedback_step_m").value)
+        self.feedback_move_acceptance_m = float(self.get_parameter("feedback_move_acceptance_m").value)
+        self.feedback_move_timeout_sec = float(self.get_parameter("feedback_move_timeout_sec").value)
+        self.feedback_move_cooldown_sec = float(self.get_parameter("feedback_move_cooldown_sec").value)
+        self.max_feedback_moves_per_waypoint = max(
+            int(self.get_parameter("max_feedback_moves_per_waypoint").value),
+            0,
+        )
+        self.max_total_feedback_moves = max(
+            int(self.get_parameter("max_total_feedback_moves").value),
+            0,
+        )
 
         self.finish_mode = str(self.get_parameter("finish_mode").value).upper()
         self.abort_mode = str(self.get_parameter("abort_mode").value).upper()
@@ -251,7 +275,15 @@ class FrontRectangleSearchMissionNode(Node):
             for index in range(lane_count)
         ]
 
-    def goto_offset(self, label: str, north_m: float, east_m: float, altitude_m: float) -> bool:
+    def goto_offset(
+        self,
+        label: str,
+        north_m: float,
+        east_m: float,
+        altitude_m: float,
+        acceptance_m: float = None,
+        timeout_sec: float = None,
+    ) -> bool:
         if not self.target_inside_radius(north_m, east_m, self.software_radius_m):
             self.get_logger().error(
                 f"Refusing waypoint {label}: radius={math.hypot(north_m, east_m):.2f}m "
@@ -268,6 +300,8 @@ class FrontRectangleSearchMissionNode(Node):
         start = time.monotonic()
         next_send = 0.0
         send_period = 1.0 / max(self.setpoint_hz, 0.1)
+        acceptance_m = self.waypoint_acceptance_m if acceptance_m is None else acceptance_m
+        timeout_sec = self.waypoint_timeout_sec if timeout_sec is None else timeout_sec
 
         while rclpy.ok() and not self.stop_event.is_set():
             now = time.monotonic()
@@ -286,10 +320,10 @@ class FrontRectangleSearchMissionNode(Node):
                 next_send = now + send_period
 
             distance_xy = math.hypot(self.local_x - target_x, self.local_y - target_y)
-            if distance_xy <= self.waypoint_acceptance_m:
+            if distance_xy <= acceptance_m:
                 return True
 
-            if now - start > self.waypoint_timeout_sec:
+            if now - start > timeout_sec:
                 self.get_logger().error(f"Waypoint timeout: {label}")
                 return False
 
@@ -300,6 +334,7 @@ class FrontRectangleSearchMissionNode(Node):
     def hold_and_watch_feedback(self, *, label: str, hold_sec: float) -> bool:
         start = time.monotonic()
         last_print = 0.0
+        moves_this_waypoint = 0
 
         while rclpy.ok() and not self.stop_event.is_set():
             now = time.monotonic()
@@ -319,6 +354,14 @@ class FrontRectangleSearchMissionNode(Node):
 
             if self.stop_on_ready_to_inspect and self.feedback_ready_to_inspect():
                 return True
+
+            if self.should_execute_feedback_movement(now, moves_this_waypoint):
+                if not self.execute_feedback_movement(label):
+                    return False
+                moves_this_waypoint += 1
+                self.total_feedback_moves += 1
+                self.last_feedback_move_time = time.monotonic()
+                start = time.monotonic()
 
             if now - start >= hold_sec:
                 return True
@@ -347,6 +390,78 @@ class FrontRectangleSearchMissionNode(Node):
         if time.monotonic() - self.latest_feedback_time > self.target_feedback_timeout_sec:
             return False
         return bool(self.latest_feedback.has_target and self.latest_feedback.ready_to_inspect)
+
+    def should_execute_feedback_movement(self, now: float, moves_this_waypoint: int) -> bool:
+        if not self.enable_target_feedback_movement:
+            return False
+        if self.latest_feedback is None:
+            return False
+        if now - self.latest_feedback_time > self.target_feedback_timeout_sec:
+            return False
+        if moves_this_waypoint >= self.max_feedback_moves_per_waypoint:
+            return False
+        if self.max_total_feedback_moves > 0 and self.total_feedback_moves >= self.max_total_feedback_moves:
+            return False
+        if now - self.last_feedback_move_time < self.feedback_move_cooldown_sec:
+            return False
+        if not self.latest_feedback.has_target or self.latest_feedback.ready_to_inspect:
+            return False
+
+        motion_command = self.latest_feedback.motion_command.upper()
+        if motion_command not in {"APPROACH", "STRAFE_LEFT", "STRAFE_RIGHT"}:
+            return False
+
+        forward_m, right_m = self.clamped_feedback_step(self.latest_feedback)
+        return math.hypot(forward_m, right_m) > 0.01
+
+    def execute_feedback_movement(self, label: str) -> bool:
+        feedback = self.latest_feedback
+        forward_m, right_m = self.clamped_feedback_step(feedback)
+        delta_north_m, delta_east_m = self.body_to_local_offset(forward_m, right_m)
+
+        current_north_m = self.local_x - self.origin_x
+        current_east_m = self.local_y - self.origin_y
+        target_north_m = current_north_m + delta_north_m
+        target_east_m = current_east_m + delta_east_m
+
+        if not self.target_inside_radius(target_north_m, target_east_m, self.software_radius_m):
+            self.get_logger().warn(
+                "Skipping target-feedback movement outside software radius: "
+                f"target_radius={math.hypot(target_north_m, target_east_m):.2f}m "
+                f"> software_radius_m={self.software_radius_m:.2f}m"
+            )
+            return True
+
+        move_label = (
+            f"{label}/FEEDBACK_{feedback.motion_command}_"
+            f"T{feedback.track_id}_F{forward_m:.2f}_R{right_m:.2f}"
+        )
+        self.get_logger().warn(
+            f"Target-feedback move: {move_label}, "
+            f"body_forward={forward_m:.2f}m body_right={right_m:.2f}m"
+        )
+        return self.goto_offset(
+            move_label,
+            target_north_m,
+            target_east_m,
+            self.config.altitude_m,
+            acceptance_m=self.feedback_move_acceptance_m,
+            timeout_sec=self.feedback_move_timeout_sec,
+        )
+
+    def clamped_feedback_step(self, feedback):
+        return (
+            self.clamp(
+                float(feedback.recommended_body_forward_m),
+                -self.max_feedback_step_m,
+                self.max_feedback_step_m,
+            ),
+            self.clamp(
+                float(feedback.recommended_body_right_m),
+                -self.max_feedback_step_m,
+                self.max_feedback_step_m,
+            ),
+        )
 
     def capture_front_yaw(self) -> bool:
         if not self.use_current_yaw_as_front:
@@ -532,6 +647,9 @@ class FrontRectangleSearchMissionNode(Node):
         self.get_logger().info(f"route_hold_sec               : {self.route_hold_sec}")
         self.get_logger().info(f"target_feedback_topic        : {self.target_feedback_topic}")
         self.get_logger().info(f"stop_on_ready_to_inspect     : {self.stop_on_ready_to_inspect}")
+        self.get_logger().info(f"enable_target_feedback_move  : {self.enable_target_feedback_movement}")
+        self.get_logger().info(f"max_feedback_step_m          : {self.max_feedback_step_m}")
+        self.get_logger().info(f"max_total_feedback_moves     : {self.max_total_feedback_moves}")
         self.get_logger().info(f"finish_mode                  : {self.finish_mode}")
         self.get_logger().info(f"abort_mode                   : {self.abort_mode}")
 
@@ -562,6 +680,10 @@ class FrontRectangleSearchMissionNode(Node):
     @staticmethod
     def angle_diff_deg(target_deg: float, current_deg: float) -> float:
         return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+
+    @staticmethod
+    def clamp(value: float, min_value: float, max_value: float) -> float:
+        return max(min(value, max_value), min_value)
 
 
 def main(args=None):
