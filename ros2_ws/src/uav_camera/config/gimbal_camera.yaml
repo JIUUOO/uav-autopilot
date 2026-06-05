@@ -1,4 +1,4 @@
-/uav/camera/front/gimbal_camera:
+/uav/camera/gimbal/gimbal_camera:
   ros__parameters:
     video_device: "/dev/video0"
       # Current SJCAM capture device. The stable by-id symlink resolves to /dev/video0,

@@ -28,7 +28,7 @@ class FrameQualitySelectorNode(Node):
     def __init__(self):
         super().__init__("frame_quality_selector")
 
-        self.declare_parameter("image_topic", "/uav/camera/front/image_raw")
+        self.declare_parameter("image_topic", "/uav/camera/gimbal/image_raw")
         self.declare_parameter("imu_topic", "/mavros/imu/data")
         self.declare_parameter("selected_image_topic", "/uav/vision/selected_frame/image_raw")
         self.declare_parameter("quality_topic", "/uav/vision/frame_quality")

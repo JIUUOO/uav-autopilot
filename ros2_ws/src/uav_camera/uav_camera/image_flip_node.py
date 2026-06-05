@@ -14,8 +14,8 @@ class ImageFlipNode(Node):
     def __init__(self):
         super().__init__("image_flip")
 
-        self.declare_parameter("input_topic", "/uav/camera/front/image_raw_unflipped")
-        self.declare_parameter("output_topic", "/uav/camera/front/image_raw")
+        self.declare_parameter("input_topic", "/uav/camera/gimbal/image_raw_unflipped")
+        self.declare_parameter("output_topic", "/uav/camera/gimbal/image_raw")
         self.declare_parameter("flip_mode", "rotate_180")  # none, vertical, horizontal, rotate_180
 
         self.input_topic = str(self.get_parameter("input_topic").value)

@@ -117,8 +117,8 @@ def generate_launch_description():
     mission_default_port = "udpin:127.0.0.1:14550"
     experiment_root = os.path.expanduser("~/uav_experiments")
 
-    raw_image_topic = "/uav/camera/front/image_raw"
-    unflipped_image_topic = "/uav/camera/front/image_raw_unflipped"
+    raw_image_topic = "/uav/camera/gimbal/image_raw"
+    unflipped_image_topic = "/uav/camera/gimbal/image_raw_unflipped"
     selected_image_topic = "/uav/vision/selected_frame/image_raw"
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
@@ -137,7 +137,7 @@ def generate_launch_description():
 
     bag_topics_default = " ".join([
         raw_image_topic,
-        "/uav/camera/front/camera_info",
+        "/uav/camera/gimbal/camera_info",
         selected_image_topic,
         frame_quality_topic,
         gemini_report_topic,
@@ -191,7 +191,7 @@ def generate_launch_description():
         package="usb_cam",
         executable="usb_cam_node_exe",
         name="gimbal_camera",
-        namespace="uav/camera/front",
+        namespace="uav/camera/gimbal",
         output="screen",
         condition=IfCondition(LaunchConfiguration("enable_usb_cam")),
         parameters=[
@@ -208,7 +208,7 @@ def generate_launch_description():
         package="uav_camera",
         executable="image_flip",
         name="gimbal_camera_flip",
-        namespace="uav/camera/front",
+        namespace="uav/camera/gimbal",
         output="screen",
         condition=IfCondition(LaunchConfiguration("enable_usb_cam")),
         parameters=[{
@@ -519,15 +519,15 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
         DeclareLaunchArgument("gimbal_state_topic", default_value=gimbal_state_topic),
         DeclareLaunchArgument("gimbal_servo_channel", default_value="7"),
-        DeclareLaunchArgument("gimbal_pwm_min", default_value="1530"),
-        DeclareLaunchArgument("gimbal_pwm_neutral", default_value="1560"),
-        DeclareLaunchArgument("gimbal_pwm_max", default_value="1590"),
-        DeclareLaunchArgument("gimbal_invert_pwm", default_value="true"),
-        DeclareLaunchArgument("gimbal_preset_far_pwm", default_value="1560"),
-        DeclareLaunchArgument("gimbal_preset_near_pwm", default_value="1530"),
+        DeclareLaunchArgument("gimbal_pwm_min", default_value="1520"),
+        DeclareLaunchArgument("gimbal_pwm_neutral", default_value="1550"),
+        DeclareLaunchArgument("gimbal_pwm_max", default_value="1580"),
+        DeclareLaunchArgument("gimbal_invert_pwm", default_value="false"),
+        DeclareLaunchArgument("gimbal_preset_far_pwm", default_value="1520"),
+        DeclareLaunchArgument("gimbal_preset_near_pwm", default_value="1580"),
         DeclareLaunchArgument("gimbal_command_hz", default_value="5.0"),
         DeclareLaunchArgument("gimbal_max_rate_pwm_s", default_value="100.0"),
-        DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="2.0"),
+        DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="10.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
         DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
         DeclareLaunchArgument("gimbal_scan_sequence", default_value="PRESET_FAR,PRESET_NEAR"),

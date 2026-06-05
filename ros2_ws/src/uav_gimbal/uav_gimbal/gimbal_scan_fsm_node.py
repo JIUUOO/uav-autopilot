@@ -21,8 +21,8 @@ class GimbalScanFsmNode(Node):
 
         self.declare_parameter("pitch_target_topic", "/uav/gimbal/pitch_target_pwm")
         self.declare_parameter("trigger_topic", "/uav/vision/analyze_trigger")
-        self.declare_parameter("preset_far_pwm", 1450)
-        self.declare_parameter("preset_near_pwm", 1400)
+        self.declare_parameter("preset_far_pwm", 1520)
+        self.declare_parameter("preset_near_pwm", 1580)
         self.declare_parameter("scan_sequence", "PRESET_FAR,PRESET_NEAR")
         self.declare_parameter("settle_sec", 1.0)
         self.declare_parameter("post_trigger_sec", 0.2)

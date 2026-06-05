@@ -12,7 +12,7 @@ def generate_launch_description():
         package="usb_cam",
         executable="usb_cam_node_exe",
         name="gimbal_camera",
-        namespace="/uav/camera/front",
+        namespace="/uav/camera/gimbal",
         output="screen",
         parameters=[gimbal_config],
         remappings=[
@@ -25,11 +25,11 @@ def generate_launch_description():
         package="uav_camera",
         executable="image_flip",
         name="gimbal_camera_flip",
-        namespace="/uav/camera/front",
+        namespace="/uav/camera/gimbal",
         output="screen",
         parameters=[{
-            "input_topic": "/uav/camera/front/image_raw_unflipped",
-            "output_topic": "/uav/camera/front/image_raw",
+            "input_topic": "/uav/camera/gimbal/image_raw_unflipped",
+            "output_topic": "/uav/camera/gimbal/image_raw",
             "flip_mode": "rotate_180",
         }],
     )

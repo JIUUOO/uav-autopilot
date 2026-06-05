@@ -27,7 +27,7 @@ class GeminiScoutReportNode(Node):
     def __init__(self):
         super().__init__("gemini_scout_report")
 
-        self.declare_parameter("image_topic", "/uav/camera/front/image_raw")
+        self.declare_parameter("image_topic", "/uav/camera/gimbal/image_raw")
         self.declare_parameter("model", "gemini-3.5-flash")
         self.declare_parameter("report_period_sec", 5.0)
         self.declare_parameter("max_width", 640)
