@@ -263,7 +263,6 @@ def generate_launch_description():
             "inspection_max_count": LaunchConfiguration("inspection_max_count"),
             "disable_inspection_for_person": LaunchConfiguration("disable_inspection_for_person"),
             "person_safe_altitude_m": LaunchConfiguration("person_safe_altitude_m"),
-            "person_keywords": LaunchConfiguration("person_keywords"),
             "finish_mode": LaunchConfiguration("finish_mode"),
             "abort_mode": LaunchConfiguration("abort_mode"),
         }],
@@ -308,8 +307,8 @@ def generate_launch_description():
             "command_timeout_sec": LaunchConfiguration("gimbal_command_timeout_sec"),
             "timeout_to_neutral": LaunchConfiguration("gimbal_timeout_to_neutral"),
             "confidence_threshold": LaunchConfiguration("gimbal_confidence_threshold"),
-            "gemini_step_deg": LaunchConfiguration("gimbal_gemini_step_deg"),
-            "invert_gemini_direction": LaunchConfiguration("gimbal_invert_gemini_direction"),
+            "preset_far_deg": LaunchConfiguration("gimbal_preset_far_deg"),
+            "preset_near_deg": LaunchConfiguration("gimbal_preset_near_deg"),
         }],
     )
 
@@ -368,8 +367,8 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="2.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
         DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
-        DeclareLaunchArgument("gimbal_gemini_step_deg", default_value="5.0"),  # Degrees added/subtracted per Gemini up/down report.
-        DeclareLaunchArgument("gimbal_invert_gemini_direction", default_value="false"),
+        DeclareLaunchArgument("gimbal_preset_far_deg", default_value="10.0"),
+        DeclareLaunchArgument("gimbal_preset_near_deg", default_value="20.0"),
         DeclareLaunchArgument("enable_mission_node", default_value="false"),
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
@@ -410,7 +409,6 @@ def generate_launch_description():
         DeclareLaunchArgument("inspection_max_count", default_value="1"),
         DeclareLaunchArgument("disable_inspection_for_person", default_value="true"),
         DeclareLaunchArgument("person_safe_altitude_m", default_value="3.5"),
-        DeclareLaunchArgument("person_keywords", default_value="person,human,people,man,woman,child"),
         DeclareLaunchArgument("finish_mode", default_value="LAND"),
         DeclareLaunchArgument("abort_mode", default_value="RTL"),
         DeclareLaunchArgument("enable_ntrip", default_value="true"),

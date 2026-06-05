@@ -102,7 +102,6 @@ class BoundedScoutMissionNode(Node):
 
         # Gemini-triggered inspection behavior and safety gates.
         self.declare_parameter("gemini_report_topic", "/uav/vision/gemini_report")
-        self.declare_parameter("inspection_trigger_risk", "HIGH")
         self.declare_parameter("inspection_confidence_threshold", 0.70)
         self.declare_parameter("enable_low_altitude_inspection", False)
         self.declare_parameter("inspect_altitude_m", 2.0)
@@ -111,7 +110,6 @@ class BoundedScoutMissionNode(Node):
         self.declare_parameter("inspection_max_count", 1)
         self.declare_parameter("disable_inspection_for_person", True)
         self.declare_parameter("person_safe_altitude_m", 3.5)
-        self.declare_parameter("person_keywords", "person,human,people,man,woman,child")
 
         # Mission exit behavior.
         self.declare_parameter("finish_mode", "LAND")
@@ -141,7 +139,6 @@ class BoundedScoutMissionNode(Node):
         self.square_origin_mode = str(self.get_parameter("square_origin_mode").value).strip().lower()
 
         self.gemini_report_topic = str(self.get_parameter("gemini_report_topic").value)
-        self.inspection_trigger_risk = str(self.get_parameter("inspection_trigger_risk").value).upper()
         self.inspection_confidence_threshold = float(self.get_parameter("inspection_confidence_threshold").value)
         self.enable_low_altitude_inspection = bool(self.get_parameter("enable_low_altitude_inspection").value)
         self.inspect_altitude_m = float(self.get_parameter("inspect_altitude_m").value)
@@ -150,11 +147,6 @@ class BoundedScoutMissionNode(Node):
         self.inspection_max_count = int(self.get_parameter("inspection_max_count").value)
         self.disable_inspection_for_person = bool(self.get_parameter("disable_inspection_for_person").value)
         self.person_safe_altitude_m = float(self.get_parameter("person_safe_altitude_m").value)
-        self.person_keywords = [
-            keyword.strip().lower()
-            for keyword in str(self.get_parameter("person_keywords").value).split(",")
-            if keyword.strip()
-        ]
 
         self.finish_mode = str(self.get_parameter("finish_mode").value).upper()
         self.abort_mode = str(self.get_parameter("abort_mode").value).upper()
@@ -444,22 +436,27 @@ class BoundedScoutMissionNode(Node):
             self.latest_report_consumed = True
             return False
 
-        risk_match = report.risk_level.strip().upper() == self.inspection_trigger_risk
-        action_match = report.recommended_action.strip().lower() == "inspect"
-        confidence_ok = report.confidence >= self.inspection_confidence_threshold
+        candidate = self.find_candidate(
+            report.person_candidates,
+            report.primary_candidate_index,
+        )
+        confidence_ok = (
+            candidate is not None
+            and candidate.confidence >= self.inspection_confidence_threshold
+        )
 
-        if confidence_ok and (risk_match or action_match):
-            if self.disable_inspection_for_person and self.report_mentions_person(report):
+        if report.person_detected and confidence_ok:
+            if self.disable_inspection_for_person:
                 self.get_logger().warn(
-                    "Inspection blocked: person/human detected in Gemini report. "
+                    "Inspection blocked: person detected in Gemini report. "
                     f"Keeping scout altitude >= {self.person_safe_altitude_m:.1f}m."
                 )
                 self.latest_report_consumed = True
                 return False
 
             self.get_logger().warn(
-                f"Inspection trigger: risk={report.risk_level} "
-                f"action={report.recommended_action} confidence={report.confidence:.2f}"
+                f"Inspection trigger: candidate={candidate.candidate_index} "
+                f"confidence={candidate.confidence:.2f}"
             )
             return True
 
@@ -704,17 +701,16 @@ class BoundedScoutMissionNode(Node):
     def target_inside_radius(north_m: float, east_m: float, radius_m: float) -> bool:
         return math.hypot(north_m, east_m) <= radius_m
 
-    def report_mentions_person(self, report: GeminiReport) -> bool:
-        fields = [
-            report.scene_summary,
-            report.recommended_action,
-            report.raw_json,
-            *list(report.visible_objects),
-            *list(report.possible_targets),
-            *list(report.hazards),
-        ]
-        text = " ".join(str(field).lower() for field in fields)
-        return any(keyword in text for keyword in self.person_keywords)
+    @staticmethod
+    def find_candidate(candidates, candidate_index):
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.candidate_index == candidate_index
+            ),
+            None,
+        )
 
     @staticmethod
     def parse_float_list(value: str):

@@ -44,8 +44,8 @@ class GimbalPitchControllerNode(Node):
         self.declare_parameter("timeout_to_neutral", True)
 
         self.declare_parameter("confidence_threshold", 0.75)
-        self.declare_parameter("gemini_step_deg", 5.0)
-        self.declare_parameter("invert_gemini_direction", False)
+        self.declare_parameter("preset_far_deg", 10.0)
+        self.declare_parameter("preset_near_deg", 20.0)
 
         self.dry_run = bool(self.get_parameter("dry_run").value)
         self.command_service = str(self.get_parameter("command_service").value)
@@ -68,8 +68,8 @@ class GimbalPitchControllerNode(Node):
         self.timeout_to_neutral = bool(self.get_parameter("timeout_to_neutral").value)
 
         self.confidence_threshold = float(self.get_parameter("confidence_threshold").value)
-        self.gemini_step_deg = float(self.get_parameter("gemini_step_deg").value)
-        self.invert_gemini_direction = bool(self.get_parameter("invert_gemini_direction").value)
+        self.preset_far_deg = float(self.get_parameter("preset_far_deg").value)
+        self.preset_near_deg = float(self.get_parameter("preset_near_deg").value)
 
         self.pitch_target_deg = self.clamp_pitch(self.pitch_neutral_deg)
         self.pitch_command_deg = self.pitch_target_deg
@@ -99,28 +99,30 @@ class GimbalPitchControllerNode(Node):
         self.last_safety_state = "active"
 
     def on_gemini_report(self, msg):
-        if not msg.need_gimbal_adjustment:
+        if not msg.parsed_ok or not msg.person_detected:
             return
-        if msg.confidence < self.confidence_threshold:
+
+        candidate = self.find_candidate(msg.person_candidates, msg.primary_candidate_index)
+        if candidate is None:
+            self.last_safety_state = "missing_primary_candidate"
+            return
+        if candidate.confidence < self.confidence_threshold:
             self.last_safety_state = "low_confidence"
             return
 
-        direction = msg.gimbal_direction.strip().lower()
-        if self.invert_gemini_direction:
-            direction = self.inverted_direction(direction)
-
-        if direction == "up":
-            self.pitch_target_deg = self.clamp_pitch(self.pitch_target_deg + self.gemini_step_deg)
-        elif direction == "down":
-            self.pitch_target_deg = self.clamp_pitch(self.pitch_target_deg - self.gemini_step_deg)
-        elif direction == "hold":
-            pass
+        preset = msg.recommended_gimbal_preset.strip().upper()
+        if preset == "PRESET_FAR":
+            self.pitch_target_deg = self.clamp_pitch(self.preset_far_deg)
+        elif preset == "PRESET_NEAR":
+            self.pitch_target_deg = self.clamp_pitch(self.preset_near_deg)
+        elif preset == "HOLD":
+            return
         else:
-            self.last_safety_state = "unknown_direction"
+            self.last_safety_state = "unknown_gimbal_preset"
             return
 
         self.last_command_time = time.monotonic()
-        self.last_source = f"gemini:{direction}"
+        self.last_source = f"gemini:{preset.lower()}"
         self.last_safety_state = "active"
 
     def on_timer(self):
@@ -231,12 +233,15 @@ class GimbalPitchControllerNode(Node):
         return max(self.pitch_min_deg, min(self.pitch_max_deg, value))
 
     @staticmethod
-    def inverted_direction(direction: str) -> str:
-        if direction == "up":
-            return "down"
-        if direction == "down":
-            return "up"
-        return direction
+    def find_candidate(candidates, candidate_index):
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.candidate_index == candidate_index
+            ),
+            None,
+        )
 
 
 def main(args=None):
