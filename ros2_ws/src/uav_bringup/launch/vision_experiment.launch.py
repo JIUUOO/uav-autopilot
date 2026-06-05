@@ -123,6 +123,7 @@ def generate_launch_description():
     gemini_report_topic = "/uav/vision/gemini_report"
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
+    target_feedback_topic = "/uav/vision/target_feedback"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
 
@@ -140,6 +141,7 @@ def generate_launch_description():
         gemini_report_topic,
         gemini_trigger_topic,
         candidate_tracks_topic,
+        target_feedback_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
         "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
@@ -351,6 +353,28 @@ def generate_launch_description():
         }],
     )
 
+    target_feedback_node = Node(
+        package="uav_vision",
+        executable="target_feedback",
+        name="target_feedback",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_target_feedback")),
+        parameters=[{
+            "tracks_topic": LaunchConfiguration("candidate_tracks_topic"),
+            "feedback_topic": LaunchConfiguration("target_feedback_topic"),
+            "min_priority_score": LaunchConfiguration("feedback_min_priority_score"),
+            "center_x_min": LaunchConfiguration("feedback_center_x_min"),
+            "center_x_max": LaunchConfiguration("feedback_center_x_max"),
+            "center_y_min": LaunchConfiguration("feedback_center_y_min"),
+            "center_y_max": LaunchConfiguration("feedback_center_y_max"),
+            "side_step_m": LaunchConfiguration("feedback_side_step_m"),
+            "forward_step_m": LaunchConfiguration("feedback_forward_step_m"),
+            "approach_distance_bucket": LaunchConfiguration("feedback_approach_distance_bucket"),
+            "inspect_distance_bucket": LaunchConfiguration("feedback_inspect_distance_bucket"),
+            "require_centered_for_inspect": LaunchConfiguration("feedback_require_centered_for_inspect"),
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("experiment_mode", default_value="selector"),
         DeclareLaunchArgument("enable_mavros", default_value="true"),
@@ -366,6 +390,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
+        DeclareLaunchArgument("enable_target_feedback", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
         DeclareLaunchArgument("enable_gimbal_scan", default_value="false"),
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
@@ -400,6 +425,17 @@ def generate_launch_description():
         DeclareLaunchArgument("candidate_match_center_distance", default_value="0.15"),
         DeclareLaunchArgument("candidate_max_track_age_sec", default_value="30.0"),
         DeclareLaunchArgument("candidate_publish_empty", default_value="true"),
+        DeclareLaunchArgument("target_feedback_topic", default_value=target_feedback_topic),
+        DeclareLaunchArgument("feedback_min_priority_score", default_value="0.50"),
+        DeclareLaunchArgument("feedback_center_x_min", default_value="0.40"),
+        DeclareLaunchArgument("feedback_center_x_max", default_value="0.60"),
+        DeclareLaunchArgument("feedback_center_y_min", default_value="0.35"),
+        DeclareLaunchArgument("feedback_center_y_max", default_value="0.70"),
+        DeclareLaunchArgument("feedback_side_step_m", default_value="0.30"),
+        DeclareLaunchArgument("feedback_forward_step_m", default_value="0.50"),
+        DeclareLaunchArgument("feedback_approach_distance_bucket", default_value="far"),
+        DeclareLaunchArgument("feedback_inspect_distance_bucket", default_value="near"),
+        DeclareLaunchArgument("feedback_require_centered_for_inspect", default_value="true"),
         DeclareLaunchArgument("gimbal_dry_run", default_value="true"),
         DeclareLaunchArgument("gimbal_command_service", default_value="/mavros/cmd/command"),
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
@@ -486,6 +522,7 @@ def generate_launch_description():
         gimbal_node,
         gimbal_scan_node,
         candidate_manager_node,
+        target_feedback_node,
         OpaqueFunction(function=_make_gemini_node),
         OpaqueFunction(function=_make_bag_process),
     ])
