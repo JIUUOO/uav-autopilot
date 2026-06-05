@@ -26,6 +26,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'image_flip = uav_camera.image_flip_node:main',
         ],
     },
 )

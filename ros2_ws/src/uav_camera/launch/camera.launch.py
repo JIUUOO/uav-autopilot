@@ -16,11 +16,25 @@ def generate_launch_description():
         output="screen",
         parameters=[gimbal_config],
         remappings=[
-            ("image_raw", "image_raw"),
+            ("image_raw", "image_raw_unflipped"),
             ("camera_info", "camera_info"),
         ],
     )
 
+    image_flip = Node(
+        package="uav_camera",
+        executable="image_flip",
+        name="gimbal_camera_flip",
+        namespace="/uav/camera/front",
+        output="screen",
+        parameters=[{
+            "input_topic": "/uav/camera/front/image_raw_unflipped",
+            "output_topic": "/uav/camera/front/image_raw",
+            "flip_mode": "rotate_180",
+        }],
+    )
+
     return LaunchDescription([
         gimbal_cam,
+        image_flip,
     ])

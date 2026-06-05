@@ -118,6 +118,7 @@ def generate_launch_description():
     experiment_root = os.path.expanduser("~/uav_experiments")
 
     raw_image_topic = "/uav/camera/front/image_raw"
+    unflipped_image_topic = "/uav/camera/front/image_raw_unflipped"
     selected_image_topic = "/uav/vision/selected_frame/image_raw"
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
@@ -198,9 +199,23 @@ def generate_launch_description():
             {"video_device": LaunchConfiguration("usb_cam_video_device")},
         ],
         remappings=[
-            ("image_raw", "image_raw"),
+            ("image_raw", "image_raw_unflipped"),
             ("camera_info", "camera_info"),
         ],
+    )
+
+    usb_cam_flip_node = Node(
+        package="uav_camera",
+        executable="image_flip",
+        name="gimbal_camera_flip",
+        namespace="uav/camera/front",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_usb_cam")),
+        parameters=[{
+            "input_topic": unflipped_image_topic,
+            "output_topic": LaunchConfiguration("raw_image_topic"),
+            "flip_mode": LaunchConfiguration("usb_cam_flip_mode"),
+        }],
     )
 
     selector_node = Node(
@@ -432,6 +447,7 @@ def generate_launch_description():
             "usb_cam_video_device",
             default_value="/dev/video0",
         ),
+        DeclareLaunchArgument("usb_cam_flip_mode", default_value="rotate_180"),
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
@@ -593,6 +609,7 @@ def generate_launch_description():
         DeclareLaunchArgument("bag_topics", default_value=bag_topics_default),
         mavros_node,
         usb_cam_node,
+        usb_cam_flip_node,
         selector_node,
         mission_node,
         battery_node,
