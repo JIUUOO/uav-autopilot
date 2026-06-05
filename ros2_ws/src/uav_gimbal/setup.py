@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'gimbal_pitch_controller = uav_gimbal.gimbal_pitch_controller_node:main',
+            'gimbal_scan_fsm = uav_gimbal.gimbal_scan_fsm_node:main',
         ],
     },
 )

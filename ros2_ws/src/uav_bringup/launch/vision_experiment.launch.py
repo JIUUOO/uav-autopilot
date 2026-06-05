@@ -137,6 +137,7 @@ def generate_launch_description():
         selected_image_topic,
         frame_quality_topic,
         gemini_report_topic,
+        gemini_trigger_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
         "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
@@ -313,6 +314,25 @@ def generate_launch_description():
         }],
     )
 
+    gimbal_scan_node = Node(
+        package="uav_gimbal",
+        executable="gimbal_scan_fsm",
+        name="gimbal_scan_fsm",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_gimbal_scan")),
+        parameters=[{
+            "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
+            "trigger_topic": LaunchConfiguration("gemini_trigger_topic"),
+            "preset_far_pwm": LaunchConfiguration("gimbal_preset_far_pwm"),
+            "preset_near_pwm": LaunchConfiguration("gimbal_preset_near_pwm"),
+            "scan_sequence": LaunchConfiguration("gimbal_scan_sequence"),
+            "settle_sec": LaunchConfiguration("gimbal_scan_settle_sec"),
+            "post_trigger_sec": LaunchConfiguration("gimbal_scan_post_trigger_sec"),
+            "scan_count": LaunchConfiguration("gimbal_scan_count"),
+            "auto_start": LaunchConfiguration("gimbal_scan_auto_start"),
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("experiment_mode", default_value="selector"),
         DeclareLaunchArgument("enable_mavros", default_value="true"),
@@ -328,6 +348,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
+        DeclareLaunchArgument("enable_gimbal_scan", default_value="false"),
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
         DeclareLaunchArgument("selected_image_topic", default_value=selected_image_topic),
         DeclareLaunchArgument("frame_quality_topic", default_value=frame_quality_topic),
@@ -370,6 +391,11 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="2.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
         DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
+        DeclareLaunchArgument("gimbal_scan_sequence", default_value="PRESET_FAR,PRESET_NEAR"),
+        DeclareLaunchArgument("gimbal_scan_settle_sec", default_value="1.0"),
+        DeclareLaunchArgument("gimbal_scan_post_trigger_sec", default_value="0.2"),
+        DeclareLaunchArgument("gimbal_scan_count", default_value="1"),
+        DeclareLaunchArgument("gimbal_scan_auto_start", default_value="true"),
         DeclareLaunchArgument("enable_mission_node", default_value="false"),
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
@@ -434,6 +460,7 @@ def generate_launch_description():
         mission_node,
         battery_node,
         gimbal_node,
+        gimbal_scan_node,
         OpaqueFunction(function=_make_gemini_node),
         OpaqueFunction(function=_make_bag_process),
     ])
