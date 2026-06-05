@@ -67,6 +67,8 @@ def _make_gemini_node(context, *_args, **_kwargs):
                 "report_topic": LaunchConfiguration("gemini_report_topic"),
                 "model": LaunchConfiguration("gemini_model"),
                 "analysis_period_sec": LaunchConfiguration("gemini_period_sec"),
+                "analysis_mode": LaunchConfiguration("gemini_analysis_mode"),
+                "trigger_topic": LaunchConfiguration("gemini_trigger_topic"),
                 "prompt_version": LaunchConfiguration("gemini_prompt_version"),
                 "max_width": LaunchConfiguration("gemini_max_width"),
                 "jpeg_quality": LaunchConfiguration("gemini_jpeg_quality"),
@@ -118,6 +120,7 @@ def generate_launch_description():
     selected_image_topic = "/uav/vision/selected_frame/image_raw"
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
+    gemini_trigger_topic = "/uav/vision/analyze_trigger"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
 
@@ -338,7 +341,9 @@ def generate_launch_description():
         DeclareLaunchArgument("max_yaw_rate_rad_s", default_value="0.8"),
         DeclareLaunchArgument("gemini_image_topic", default_value=""),
         DeclareLaunchArgument("gemini_report_topic", default_value=gemini_report_topic),
+        DeclareLaunchArgument("gemini_trigger_topic", default_value=gemini_trigger_topic),
         DeclareLaunchArgument("gemini_model", default_value="gemini-2.5-flash"),
+        DeclareLaunchArgument("gemini_analysis_mode", default_value="periodic"),
         DeclareLaunchArgument("gemini_period_sec", default_value="5.0"),
         DeclareLaunchArgument("gemini_prompt_version", default_value="person_bbox_v1"),
         DeclareLaunchArgument("gemini_max_width", default_value="640"),

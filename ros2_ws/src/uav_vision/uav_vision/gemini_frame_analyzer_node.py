@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import io
+import json
 import os
 import threading
 import time
@@ -9,6 +10,7 @@ from datetime import datetime
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from std_msgs.msg import Empty
 from uav_interfaces.msg import GeminiReport
 from uav_vision.common.gemini_utils import append_error
 from uav_vision.common.gemini_utils import as_bool
@@ -37,6 +39,8 @@ class GeminiFrameAnalyzerNode(Node):
         self.declare_parameter("report_topic", "/uav/vision/gemini_report")
         self.declare_parameter("model", "gemini-2.5-flash")
         self.declare_parameter("analysis_period_sec", 5.0)
+        self.declare_parameter("analysis_mode", "periodic")
+        self.declare_parameter("trigger_topic", "/uav/vision/analyze_trigger")
         self.declare_parameter("prompt_version", DEFAULT_PROMPT_VERSION)
         self.declare_parameter("max_width", 640)
         self.declare_parameter("jpeg_quality", 70)
@@ -47,6 +51,8 @@ class GeminiFrameAnalyzerNode(Node):
         self.report_topic = str(self.get_parameter("report_topic").value)
         self.model = str(self.get_parameter("model").value)
         self.analysis_period_sec = float(self.get_parameter("analysis_period_sec").value)
+        self.analysis_mode = str(self.get_parameter("analysis_mode").value).strip().lower()
+        self.trigger_topic = str(self.get_parameter("trigger_topic").value)
         self.prompt_version = str(self.get_parameter("prompt_version").value)
         self.analysis_prompt, self.prompt_version = get_prompt(self.prompt_version)
         self.max_width = int(self.get_parameter("max_width").value)
@@ -59,10 +65,17 @@ class GeminiFrameAnalyzerNode(Node):
         self.inflight = False
         self.report_index = 0
 
+        if self.analysis_mode not in {"periodic", "event", "both"}:
+            raise ValueError("analysis_mode must be 'periodic', 'event', or 'both'.")
+
         self.client = self.make_client()
         self.create_subscription(Image, self.image_topic, self.on_image, 10)
+        if self.analysis_mode in {"event", "both"}:
+            self.create_subscription(Empty, self.trigger_topic, self.on_trigger, 10)
         self.report_pub = self.create_publisher(GeminiReport, self.report_topic, 10)
-        self.timer = self.create_timer(self.analysis_period_sec, self.on_timer)
+        self.timer = None
+        if self.analysis_mode in {"periodic", "both"}:
+            self.timer = self.create_timer(self.analysis_period_sec, self.on_timer)
 
         if self.save_reports:
             os.makedirs(self.report_dir, exist_ok=True)
@@ -70,7 +83,8 @@ class GeminiFrameAnalyzerNode(Node):
         self.get_logger().warn(
             f"Gemini frame analyzer started: image={self.image_topic}, "
             f"report={self.report_topic}, model={self.model}, "
-            f"prompt={self.prompt_version}, period={self.analysis_period_sec}s"
+            f"prompt={self.prompt_version}, mode={self.analysis_mode}, "
+            f"trigger={self.trigger_topic}, period={self.analysis_period_sec}s"
         )
 
     def make_client(self):
@@ -93,6 +107,14 @@ class GeminiFrameAnalyzerNode(Node):
             self.latest_msg = msg
 
     def on_timer(self):
+        self.request_analysis(source="timer")
+
+    def on_trigger(self, _msg):
+        self.request_analysis(source="trigger")
+
+    def request_analysis(self, *, source: str):
+        """Start Gemini analysis for the latest image when the analyzer is idle."""
+
         if self.client is None or self.inflight:
             return
 
