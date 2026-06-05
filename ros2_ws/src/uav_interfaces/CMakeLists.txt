@@ -9,6 +9,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FrameQuality.msg"
   "msg/GeminiReport.msg"
   "msg/GimbalState.msg"
+  "msg/PersonCandidate.msg"
   DEPENDENCIES std_msgs
 )
 
