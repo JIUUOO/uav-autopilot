@@ -11,7 +11,10 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from uav_interfaces.msg import GeminiReport
+from uav_interfaces.msg import PersonCandidate
 
+
+PROMPT_VERSION = "person_bbox_v1"
 
 ANALYSIS_PROMPT = """
 You are analyzing an image from a UAV front camera.
@@ -21,19 +24,28 @@ Return JSON only.
 Schema:
 {
   "scene_summary": "short description",
-  "visible_objects": ["object1", "object2"],
-  "possible_targets": ["target candidate list"],
-  "hazards": ["hazard list"],
-  "confidence": 0.0,
-  "risk_level": "LOW | MEDIUM | HIGH | UNKNOWN",
-  "recommended_action": "continue | inspect | return_home | unknown",
-  "need_gimbal_adjustment": false,
-  "gimbal_direction": "up | down | hold | unknown"
+  "person_detected": false,
+  "primary_candidate_index": -1,
+  "person_candidates": [
+    {
+      "candidate_index": 0,
+      "confidence": 0.0,
+      "bbox_norm": {
+        "x_min": 0.0,
+        "y_min": 0.0,
+        "x_max": 1.0,
+        "y_max": 1.0
+      },
+      "distance_bucket": "far | near | unknown"
+    }
+  ]
 }
 
-Be conservative. If there is no clear target, say no clear target.
-If a person or human is visible, explicitly include "person" in visible_objects.
-Gemini only provides perception and intent; do not output actuator commands.
+Be conservative. If no person is clearly visible, return person_detected=false and an empty person_candidates list.
+Return one person_candidates entry per visible person using normalized bbox coordinates.
+Choose one primary candidate for inspection, or -1 if no person is detected.
+The distance bucket is only a visual near/far estimate for closed-loop feedback, not a metric distance.
+Do not output flight, movement, or gimbal actuator commands.
 """
 
 
@@ -118,10 +130,14 @@ class GeminiFrameAnalyzerNode(Node):
         threading.Thread(target=self.analyze_frame, args=(msg,), daemon=True).start()
 
     def analyze_frame(self, msg):
+        """Send one image frame to Gemini and publish a structured GeminiReport."""
+
         started_at = time.monotonic()
         raw_text = ""
         parsed = None
-        image_path = ""
+        error_message = ""
+        call_index = self.report_index + 1
+        request_id = self.make_request_id(msg, call_index)
 
         try:
             image = self.image_msg_to_pil(msg)
@@ -143,7 +159,10 @@ class GeminiFrameAnalyzerNode(Node):
 
             raw_text = (response.text or "").strip()
             parsed = self.parse_json_response(raw_text)
+            if not isinstance(parsed, dict):
+                error_message = "Gemini response was not valid JSON."
         except Exception as exc:
+            error_message = str(exc)
             self.get_logger().error(f"Gemini frame analysis failed: {exc}")
         finally:
             latency_sec = time.monotonic() - started_at
@@ -152,39 +171,69 @@ class GeminiFrameAnalyzerNode(Node):
                 raw_text=raw_text,
                 parsed=parsed,
                 latency_sec=latency_sec,
-                image_path=image_path,
+                error_message=error_message,
+                request_id=request_id,
+                call_index=call_index,
             )
 
             if self.save_reports:
-                image_path = self.write_report_file(report)
-                report.image_path = image_path
+                try:
+                    self.write_report_file(report)
+                except Exception as exc:
+                    report.error_message = self.append_error(
+                        report.error_message,
+                        f"Failed to save report: {exc}",
+                    )
+                    self.get_logger().error(report.error_message)
 
             self.report_pub.publish(report)
             self.report_index += 1
             self.inflight = False
 
-    def make_report_msg(self, *, msg, raw_text, parsed, latency_sec, image_path):
+    def make_report_msg(
+        self,
+        *,
+        msg,
+        raw_text,
+        parsed,
+        latency_sec,
+        error_message,
+        request_id,
+        call_index,
+    ):
         report = GeminiReport()
         report.header = msg.header
+        report.request_id = request_id
+        report.call_index = call_index
+        report.prompt_version = PROMPT_VERSION
         report.image_source_topic = self.image_topic
-        report.image_path = image_path
         report.model = self.model
         report.latency_sec = float(latency_sec)
         report.parsed_ok = isinstance(parsed, dict)
-        report.risk_level = "UNKNOWN"
-        report.recommended_action = "unknown"
-        report.gimbal_direction = "unknown"
+        report.error_message = error_message
+        report.primary_candidate_index = -1
+        report.recommended_gimbal_preset = "HOLD"
 
         if isinstance(parsed, dict):
             report.scene_summary = str(parsed.get("scene_summary", ""))
-            report.visible_objects = self.as_string_list(parsed.get("visible_objects", []))
-            report.possible_targets = self.as_string_list(parsed.get("possible_targets", []))
-            report.hazards = self.as_string_list(parsed.get("hazards", []))
-            report.confidence = float(parsed.get("confidence", 0.0) or 0.0)
-            report.risk_level = str(parsed.get("risk_level", "UNKNOWN")).upper()
-            report.recommended_action = str(parsed.get("recommended_action", "unknown"))
-            report.need_gimbal_adjustment = bool(parsed.get("need_gimbal_adjustment", False))
-            report.gimbal_direction = str(parsed.get("gimbal_direction", "unknown"))
+            report.person_candidates = self.as_person_candidates(
+                parsed.get("person_candidates", [])
+            )
+            report.person_detected = (
+                self.as_bool(parsed.get("person_detected", False))
+                or bool(report.person_candidates)
+            )
+            report.primary_candidate_index = self.select_primary_candidate_index(
+                parsed.get("primary_candidate_index", -1),
+                report.person_candidates,
+            )
+            primary_candidate = self.find_candidate(
+                report.person_candidates,
+                report.primary_candidate_index,
+            )
+            report.recommended_gimbal_preset = self.gimbal_preset_for_candidate(
+                primary_candidate
+            )
 
         report.raw_json = raw_text
         return report
@@ -193,32 +242,55 @@ class GeminiFrameAnalyzerNode(Node):
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         path = os.path.join(
             self.report_dir,
-            f"gemini_frame_report_{timestamp}_{self.report_index:04d}.json",
+            f"gemini_frame_report_{timestamp}_{report.call_index:04d}.json",
         )
+        report.report_path = path
         payload = {
             "stamp": {
                 "sec": int(report.header.stamp.sec),
                 "nanosec": int(report.header.stamp.nanosec),
             },
+            "request_id": report.request_id,
+            "call_index": report.call_index,
+            "prompt_version": report.prompt_version,
             "image_source_topic": report.image_source_topic,
+            "report_path": report.report_path,
             "model": report.model,
             "latency_sec": report.latency_sec,
             "parsed_ok": report.parsed_ok,
+            "error_message": report.error_message,
             "scene_summary": report.scene_summary,
-            "visible_objects": list(report.visible_objects),
-            "possible_targets": list(report.possible_targets),
-            "hazards": list(report.hazards),
-            "confidence": report.confidence,
-            "risk_level": report.risk_level,
-            "recommended_action": report.recommended_action,
-            "need_gimbal_adjustment": report.need_gimbal_adjustment,
-            "gimbal_direction": report.gimbal_direction,
+            "person_detected": report.person_detected,
+            "primary_candidate_index": report.primary_candidate_index,
+            "recommended_gimbal_preset": report.recommended_gimbal_preset,
+            "person_candidates": [
+                {
+                    "candidate_index": candidate.candidate_index,
+                    "confidence": candidate.confidence,
+                    "bbox_norm": {
+                        "x_min": candidate.bbox_x_min_norm,
+                        "y_min": candidate.bbox_y_min_norm,
+                        "x_max": candidate.bbox_x_max_norm,
+                        "y_max": candidate.bbox_y_max_norm,
+                    },
+                    "distance_bucket": candidate.distance_bucket,
+                }
+                for candidate in report.person_candidates
+            ],
             "raw_json": report.raw_json,
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
         return path
+
+    @staticmethod
+    def make_request_id(msg, call_index):
+        return f"{msg.header.stamp.sec}-{msg.header.stamp.nanosec}-{call_index:04d}"
+
+    @staticmethod
+    def append_error(current, new_error):
+        return f"{current}; {new_error}" if current else new_error
 
     @staticmethod
     def parse_json_response(raw_text):
@@ -236,11 +308,106 @@ class GeminiFrameAnalyzerNode(Node):
         except json.JSONDecodeError:
             return None
 
-    @staticmethod
-    def as_string_list(value):
+    @classmethod
+    def as_person_candidates(cls, value):
+        """Convert Gemini JSON person candidates into validated PersonCandidate messages."""
+
         if not isinstance(value, list):
             return []
-        return [str(item) for item in value]
+
+        candidates = []
+        for fallback_index, item in enumerate(value):
+            if not isinstance(item, dict):
+                continue
+
+            bbox = item.get("bbox_norm", {})
+            if not isinstance(bbox, dict):
+                bbox = {}
+
+            candidate = PersonCandidate()
+            candidate.candidate_index = fallback_index
+            candidate.confidence = cls.clamp_unit(item.get("confidence", 0.0))
+            candidate.bbox_x_min_norm = cls.clamp_unit(bbox.get("x_min", 0.0))
+            candidate.bbox_y_min_norm = cls.clamp_unit(bbox.get("y_min", 0.0))
+            candidate.bbox_x_max_norm = cls.clamp_unit(bbox.get("x_max", 0.0))
+            candidate.bbox_y_max_norm = cls.clamp_unit(bbox.get("y_max", 0.0))
+            candidate.distance_bucket = cls.choice_or_unknown(
+                item.get("distance_bucket", "unknown"),
+                {"far", "near", "unknown"},
+            )
+
+            if (
+                candidate.bbox_x_min_norm >= candidate.bbox_x_max_norm
+                or candidate.bbox_y_min_norm >= candidate.bbox_y_max_norm
+            ):
+                continue
+
+            candidates.append(candidate)
+
+        return candidates
+
+    @classmethod
+    def select_primary_candidate_index(cls, requested_index, candidates):
+        """Use Gemini's primary index when valid, otherwise choose the highest-confidence candidate."""
+
+        requested_index = cls.as_int(requested_index, default=-1)
+        if cls.find_candidate(candidates, requested_index) is not None:
+            return requested_index
+        if not candidates:
+            return -1
+        return max(candidates, key=lambda candidate: candidate.confidence).candidate_index
+
+    @staticmethod
+    def find_candidate(candidates, candidate_index):
+        """Return the candidate with the requested index, or None if it is missing."""
+
+        return next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.candidate_index == candidate_index
+            ),
+            None,
+        )
+
+    @staticmethod
+    def gimbal_preset_for_candidate(candidate):
+        """Map a candidate's visual distance bucket to a rule-based gimbal preset."""
+
+        if candidate is None:
+            return "HOLD"
+        if candidate.distance_bucket == "far":
+            return "PRESET_FAR"
+        if candidate.distance_bucket == "near":
+            return "PRESET_NEAR"
+        return "HOLD"
+
+    @staticmethod
+    def as_int(value, default):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def as_bool(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes"}
+        return bool(value)
+
+    @staticmethod
+    def clamp_unit(value):
+        try:
+            return min(max(float(value), 0.0), 1.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    @staticmethod
+    def choice_or_unknown(value, choices):
+        normalized = str(value).strip().lower()
+        return normalized if normalized in choices else "unknown"
 
     @staticmethod
     def image_msg_to_pil(msg):
