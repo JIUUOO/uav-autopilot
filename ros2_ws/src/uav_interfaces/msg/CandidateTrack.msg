@@ -1,0 +1,13 @@
+uint32 track_id
+uint32 observations
+uint32 last_call_index
+string last_request_id
+
+float32 latest_confidence
+float32 best_confidence
+float32 center_x_norm
+float32 center_y_norm
+float32 bbox_area_norm
+string distance_bucket
+float32 priority_score
+bool primary

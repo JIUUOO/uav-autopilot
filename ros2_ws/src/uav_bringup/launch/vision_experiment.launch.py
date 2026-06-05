@@ -122,6 +122,7 @@ def generate_launch_description():
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
+    candidate_tracks_topic = "/uav/vision/candidate_tracks"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
 
@@ -138,6 +139,7 @@ def generate_launch_description():
         frame_quality_topic,
         gemini_report_topic,
         gemini_trigger_topic,
+        candidate_tracks_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
         "/tf",  # Dynamic coordinate transforms for replaying vehicle/camera pose over time.
@@ -333,6 +335,22 @@ def generate_launch_description():
         }],
     )
 
+    candidate_manager_node = Node(
+        package="uav_vision",
+        executable="candidate_manager",
+        name="candidate_manager",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_candidate_manager")),
+        parameters=[{
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "tracks_topic": LaunchConfiguration("candidate_tracks_topic"),
+            "min_confidence": LaunchConfiguration("candidate_min_confidence"),
+            "match_center_distance": LaunchConfiguration("candidate_match_center_distance"),
+            "max_track_age_sec": LaunchConfiguration("candidate_max_track_age_sec"),
+            "publish_empty": LaunchConfiguration("candidate_publish_empty"),
+        }],
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument("experiment_mode", default_value="selector"),
         DeclareLaunchArgument("enable_mavros", default_value="true"),
@@ -347,6 +365,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
+        DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
         DeclareLaunchArgument("enable_gimbal_scan", default_value="false"),
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
@@ -376,6 +395,11 @@ def generate_launch_description():
             "gemini_report_dir",
             default_value=os.path.join(experiment_root, "gemini_reports"),
         ),
+        DeclareLaunchArgument("candidate_tracks_topic", default_value=candidate_tracks_topic),
+        DeclareLaunchArgument("candidate_min_confidence", default_value="0.30"),
+        DeclareLaunchArgument("candidate_match_center_distance", default_value="0.15"),
+        DeclareLaunchArgument("candidate_max_track_age_sec", default_value="30.0"),
+        DeclareLaunchArgument("candidate_publish_empty", default_value="true"),
         DeclareLaunchArgument("gimbal_dry_run", default_value="true"),
         DeclareLaunchArgument("gimbal_command_service", default_value="/mavros/cmd/command"),
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
@@ -461,6 +485,7 @@ def generate_launch_description():
         battery_node,
         gimbal_node,
         gimbal_scan_node,
+        candidate_manager_node,
         OpaqueFunction(function=_make_gemini_node),
         OpaqueFunction(function=_make_bag_process),
     ])
