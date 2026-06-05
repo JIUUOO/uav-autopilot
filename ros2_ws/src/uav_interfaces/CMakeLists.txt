@@ -12,6 +12,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/GeminiReport.msg"
   "msg/GimbalState.msg"
   "msg/PersonCandidate.msg"
+  "msg/PersonPositionEstimate.msg"
   "msg/TargetFeedback.msg"
   DEPENDENCIES std_msgs
 )
