@@ -118,7 +118,7 @@ def generate_launch_description():
     selected_image_topic = "/uav/vision/selected_frame/image_raw"
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
-    gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_deg"
+    gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
 
     gimbal_camera_config = PathJoinSubstitution([
@@ -296,20 +296,16 @@ def generate_launch_description():
             "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
             "state_topic": LaunchConfiguration("gimbal_state_topic"),
             "servo_channel": LaunchConfiguration("gimbal_servo_channel"),
-            "pitch_min_deg": LaunchConfiguration("gimbal_pitch_min_deg"),
-            "pitch_max_deg": LaunchConfiguration("gimbal_pitch_max_deg"),
-            "pitch_neutral_deg": LaunchConfiguration("gimbal_pitch_neutral_deg"),
             "pwm_min": LaunchConfiguration("gimbal_pwm_min"),
-            "pwm_center": LaunchConfiguration("gimbal_pwm_center"),
+            "pwm_neutral": LaunchConfiguration("gimbal_pwm_neutral"),
             "pwm_max": LaunchConfiguration("gimbal_pwm_max"),
-            "invert_pitch_pwm": LaunchConfiguration("gimbal_invert_pitch_pwm"),
+            "preset_far_pwm": LaunchConfiguration("gimbal_preset_far_pwm"),
+            "preset_near_pwm": LaunchConfiguration("gimbal_preset_near_pwm"),
             "command_hz": LaunchConfiguration("gimbal_command_hz"),
-            "max_rate_deg_s": LaunchConfiguration("gimbal_max_rate_deg_s"),
+            "max_rate_pwm_s": LaunchConfiguration("gimbal_max_rate_pwm_s"),
             "command_timeout_sec": LaunchConfiguration("gimbal_command_timeout_sec"),
             "timeout_to_neutral": LaunchConfiguration("gimbal_timeout_to_neutral"),
             "confidence_threshold": LaunchConfiguration("gimbal_confidence_threshold"),
-            "preset_far_deg": LaunchConfiguration("gimbal_preset_far_deg"),
-            "preset_near_deg": LaunchConfiguration("gimbal_preset_near_deg"),
         }],
     )
 
@@ -357,20 +353,16 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
         DeclareLaunchArgument("gimbal_state_topic", default_value=gimbal_state_topic),
         DeclareLaunchArgument("gimbal_servo_channel", default_value="7"),
-        DeclareLaunchArgument("gimbal_pitch_min_deg", default_value="-45.0"),
-        DeclareLaunchArgument("gimbal_pitch_max_deg", default_value="20.0"),
-        DeclareLaunchArgument("gimbal_pitch_neutral_deg", default_value="0.0"),
         DeclareLaunchArgument("gimbal_pwm_min", default_value="1200"),
-        DeclareLaunchArgument("gimbal_pwm_center", default_value="1500"),
+        DeclareLaunchArgument("gimbal_pwm_neutral", default_value="1500"),
         DeclareLaunchArgument("gimbal_pwm_max", default_value="1800"),
-        DeclareLaunchArgument("gimbal_invert_pitch_pwm", default_value="true"),
+        DeclareLaunchArgument("gimbal_preset_far_pwm", default_value="1450"),
+        DeclareLaunchArgument("gimbal_preset_near_pwm", default_value="1400"),
         DeclareLaunchArgument("gimbal_command_hz", default_value="5.0"),
-        DeclareLaunchArgument("gimbal_max_rate_deg_s", default_value="20.0"),
+        DeclareLaunchArgument("gimbal_max_rate_pwm_s", default_value="100.0"),
         DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="2.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
         DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
-        DeclareLaunchArgument("gimbal_preset_far_deg", default_value="10.0"),
-        DeclareLaunchArgument("gimbal_preset_near_deg", default_value="20.0"),
         DeclareLaunchArgument("enable_mission_node", default_value="false"),
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
