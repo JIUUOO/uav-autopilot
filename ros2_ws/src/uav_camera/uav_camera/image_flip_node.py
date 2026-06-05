@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import copy
+import io
 
 import numpy as np
 import rclpy
@@ -46,6 +47,9 @@ class ImageFlipNode(Node):
         self.pub.publish(flipped)
 
     def flip_image(self, msg):
+        if self.is_jpeg_payload(msg.data):
+            return self.flip_jpeg_image(msg)
+
         bytes_per_pixel = self.bytes_per_pixel(msg.encoding)
         expected_step = msg.width * bytes_per_pixel
         if msg.step != expected_step:
@@ -69,6 +73,33 @@ class ImageFlipNode(Node):
         flipped = copy.copy(msg)
         flipped.data = image.copy().tobytes()
         return flipped
+
+    def flip_jpeg_image(self, msg):
+        try:
+            from PIL import Image as PILImage
+        except ImportError as exc:
+            raise RuntimeError("Missing Pillow. Install/rebuild Docker image first.") from exc
+
+        image = PILImage.open(io.BytesIO(bytes(msg.data))).convert("RGB")
+        if self.flip_mode == "vertical":
+            image = image.transpose(PILImage.FLIP_TOP_BOTTOM)
+        elif self.flip_mode == "horizontal":
+            image = image.transpose(PILImage.FLIP_LEFT_RIGHT)
+        elif self.flip_mode == "rotate_180":
+            image = image.transpose(PILImage.ROTATE_180)
+
+        out = copy.copy(msg)
+        out.height = image.height
+        out.width = image.width
+        out.encoding = "rgb8"
+        out.is_bigendian = 0
+        out.step = image.width * 3
+        out.data = image.tobytes()
+        return out
+
+    @staticmethod
+    def is_jpeg_payload(data):
+        return len(data) >= 2 and data[0] == 0xFF and data[1] == 0xD8
 
     @staticmethod
     def bytes_per_pixel(encoding):

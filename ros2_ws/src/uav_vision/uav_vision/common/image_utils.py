@@ -1,5 +1,7 @@
 """Image conversion helpers shared by vision nodes."""
 
+import io
+
 
 def image_msg_to_pil(msg):
     """Convert a ROS Image message into a PIL image."""
@@ -11,6 +13,9 @@ def image_msg_to_pil(msg):
 
     encoding = msg.encoding.lower()
     data = bytes(msg.data)
+
+    if data.startswith(b"\xff\xd8"):
+        return PILImage.open(io.BytesIO(data)).convert("RGB")
 
     formats = {
         "rgb8": ("RGB", "RGB", 3),

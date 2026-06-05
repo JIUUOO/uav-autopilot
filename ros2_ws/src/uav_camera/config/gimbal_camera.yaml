@@ -8,8 +8,10 @@
       #   v4l2-ctl --list-devices
       #   v4l2-ctl -d /dev/v4l/by-id/usb-SJCAM_4000-video-index0 --list-formats-ext
     framerate: 30.0
+    io_method: "mmap"
     image_width: 640
     image_height: 480
-    pixel_format: "mjpeg2rgb"
+    pixel_format: "raw_mjpeg"
+    av_device_format: "YUV422P"
     frame_id: "gimbal_camera"
     camera_name: "gimbal_camera"
