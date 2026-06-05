@@ -30,9 +30,10 @@ class GimbalPitchControllerNode(Node):
         self.declare_parameter("state_topic", "/uav/gimbal/state")
 
         self.declare_parameter("servo_channel", 7)  # Pitch gimbal is wired to Pixhawk PWM OUT 7.
-        self.declare_parameter("pwm_min", 1200)
-        self.declare_parameter("pwm_neutral", 1500)
-        self.declare_parameter("pwm_max", 1800)
+        self.declare_parameter("pwm_min", 1500)
+        self.declare_parameter("pwm_neutral", 1540)
+        self.declare_parameter("pwm_max", 1590)
+        self.declare_parameter("invert_pwm", False)  # Mirror PWM around pwm_neutral, e.g. 1450 -> 1550.
         self.declare_parameter("preset_far_pwm", 1450)
         self.declare_parameter("preset_near_pwm", 1400)
 
@@ -53,6 +54,7 @@ class GimbalPitchControllerNode(Node):
         self.pwm_min = int(self.get_parameter("pwm_min").value)
         self.pwm_neutral = int(self.get_parameter("pwm_neutral").value)
         self.pwm_max = int(self.get_parameter("pwm_max").value)
+        self.invert_pwm = bool(self.get_parameter("invert_pwm").value)
         self.preset_far_pwm = int(self.get_parameter("preset_far_pwm").value)
         self.preset_near_pwm = int(self.get_parameter("preset_near_pwm").value)
 
@@ -82,12 +84,12 @@ class GimbalPitchControllerNode(Node):
             f"Gimbal pitch controller started: dry_run={self.dry_run}, "
             f"servo_channel={self.servo_channel}, "
             f"pwm_min={self.pwm_min}, pwm_neutral={self.pwm_neutral}, "
-            f"pwm_max={self.pwm_max}, "
+            f"pwm_max={self.pwm_max}, invert_pwm={self.invert_pwm}, "
             f"service={self.command_service}"
         )
 
     def on_pitch_target(self, msg):
-        self.pitch_target_pwm = self.clamp_pwm(float(msg.data))
+        self.pitch_target_pwm = self.apply_pwm_direction(float(msg.data))
         self.last_command_time = time.monotonic()
         self.last_source = "pitch_target_topic"
         self.last_safety_state = "active"
@@ -106,9 +108,9 @@ class GimbalPitchControllerNode(Node):
 
         preset = msg.recommended_gimbal_preset.strip().upper()
         if preset == "PRESET_FAR":
-            self.pitch_target_pwm = self.clamp_pwm(self.preset_far_pwm)
+            self.pitch_target_pwm = self.apply_pwm_direction(self.preset_far_pwm)
         elif preset == "PRESET_NEAR":
-            self.pitch_target_pwm = self.clamp_pwm(self.preset_near_pwm)
+            self.pitch_target_pwm = self.apply_pwm_direction(self.preset_near_pwm)
         elif preset == "HOLD":
             return
         else:
@@ -205,6 +207,11 @@ class GimbalPitchControllerNode(Node):
 
     def clamp_pwm(self, value: float) -> int:
         return int(round(max(self.pwm_min, min(self.pwm_max, value))))
+
+    def apply_pwm_direction(self, value: float) -> int:
+        if self.invert_pwm:
+            value = self.pwm_neutral - (value - self.pwm_neutral)
+        return self.clamp_pwm(value)
 
     @staticmethod
     def find_candidate(candidates, candidate_index):
