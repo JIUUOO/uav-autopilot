@@ -18,42 +18,9 @@ from uav_vision.common.gemini_utils import gimbal_preset_for_candidate
 from uav_vision.common.gemini_utils import make_request_id
 from uav_vision.common.gemini_utils import parse_json_response
 from uav_vision.common.gemini_utils import select_primary_candidate_index
+from uav_vision.common.gemini_prompts import DEFAULT_PROMPT_VERSION
+from uav_vision.common.gemini_prompts import get_prompt
 from uav_vision.common.image_utils import image_msg_to_pil
-
-
-PROMPT_VERSION = "person_bbox_v1"
-
-ANALYSIS_PROMPT = """
-You are analyzing an image from a UAV front camera.
-
-Return JSON only.
-
-Schema:
-{
-  "scene_summary": "short description",
-  "person_detected": false,
-  "primary_candidate_index": -1,
-  "person_candidates": [
-    {
-      "candidate_index": 0,
-      "confidence": 0.0,
-      "bbox_norm": {
-        "x_min": 0.0,
-        "y_min": 0.0,
-        "x_max": 1.0,
-        "y_max": 1.0
-      },
-      "distance_bucket": "far | near | unknown"
-    }
-  ]
-}
-
-Be conservative. If no person is clearly visible, return person_detected=false and an empty person_candidates list.
-Return one person_candidates entry per visible person using normalized bbox coordinates.
-Choose one primary candidate for inspection, or -1 if no person is detected.
-The distance bucket is only a visual near/far estimate for closed-loop feedback, not a metric distance.
-Do not output flight, movement, or gimbal actuator commands.
-"""
 
 
 class GeminiFrameAnalyzerNode(Node):
@@ -70,6 +37,7 @@ class GeminiFrameAnalyzerNode(Node):
         self.declare_parameter("report_topic", "/uav/vision/gemini_report")
         self.declare_parameter("model", "gemini-2.5-flash")
         self.declare_parameter("analysis_period_sec", 5.0)
+        self.declare_parameter("prompt_version", DEFAULT_PROMPT_VERSION)
         self.declare_parameter("max_width", 640)
         self.declare_parameter("jpeg_quality", 70)
         self.declare_parameter("save_reports", True)
@@ -79,6 +47,8 @@ class GeminiFrameAnalyzerNode(Node):
         self.report_topic = str(self.get_parameter("report_topic").value)
         self.model = str(self.get_parameter("model").value)
         self.analysis_period_sec = float(self.get_parameter("analysis_period_sec").value)
+        self.prompt_version = str(self.get_parameter("prompt_version").value)
+        self.analysis_prompt, self.prompt_version = get_prompt(self.prompt_version)
         self.max_width = int(self.get_parameter("max_width").value)
         self.jpeg_quality = int(self.get_parameter("jpeg_quality").value)
         self.save_reports = bool(self.get_parameter("save_reports").value)
@@ -100,7 +70,7 @@ class GeminiFrameAnalyzerNode(Node):
         self.get_logger().warn(
             f"Gemini frame analyzer started: image={self.image_topic}, "
             f"report={self.report_topic}, model={self.model}, "
-            f"period={self.analysis_period_sec}s"
+            f"prompt={self.prompt_version}, period={self.analysis_period_sec}s"
         )
 
     def make_client(self):
@@ -161,7 +131,7 @@ class GeminiFrameAnalyzerNode(Node):
             jpeg_image = PILImage.open(buffer)
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=[ANALYSIS_PROMPT, jpeg_image],
+                contents=[self.analysis_prompt, jpeg_image],
             )
 
             raw_text = (response.text or "").strip()
@@ -212,7 +182,7 @@ class GeminiFrameAnalyzerNode(Node):
         report.header = msg.header
         report.request_id = request_id
         report.call_index = call_index
-        report.prompt_version = PROMPT_VERSION
+        report.prompt_version = self.prompt_version
         report.image_source_topic = self.image_topic
         report.model = self.model
         report.latency_sec = float(latency_sec)
