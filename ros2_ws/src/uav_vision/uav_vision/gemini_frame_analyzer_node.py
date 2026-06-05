@@ -41,6 +41,7 @@ class GeminiFrameAnalyzerNode(Node):
         self.declare_parameter("analysis_period_sec", 5.0)
         self.declare_parameter("analysis_mode", "periodic")
         self.declare_parameter("trigger_topic", "/uav/vision/analyze_trigger")
+        self.declare_parameter("max_calls", 0)  # 0: unlimited
         self.declare_parameter("prompt_version", DEFAULT_PROMPT_VERSION)
         self.declare_parameter("max_width", 640)
         self.declare_parameter("jpeg_quality", 70)
@@ -53,6 +54,7 @@ class GeminiFrameAnalyzerNode(Node):
         self.analysis_period_sec = float(self.get_parameter("analysis_period_sec").value)
         self.analysis_mode = str(self.get_parameter("analysis_mode").value).strip().lower()
         self.trigger_topic = str(self.get_parameter("trigger_topic").value)
+        self.max_calls = max(int(self.get_parameter("max_calls").value), 0)
         self.prompt_version = str(self.get_parameter("prompt_version").value)
         self.analysis_prompt, self.prompt_version = get_prompt(self.prompt_version)
         self.max_width = int(self.get_parameter("max_width").value)
@@ -84,7 +86,8 @@ class GeminiFrameAnalyzerNode(Node):
             f"Gemini frame analyzer started: image={self.image_topic}, "
             f"report={self.report_topic}, model={self.model}, "
             f"prompt={self.prompt_version}, mode={self.analysis_mode}, "
-            f"trigger={self.trigger_topic}, period={self.analysis_period_sec}s"
+            f"trigger={self.trigger_topic}, period={self.analysis_period_sec}s, "
+            f"max_calls={self.max_calls}"
         )
 
     def make_client(self):
@@ -117,6 +120,12 @@ class GeminiFrameAnalyzerNode(Node):
 
         if self.client is None or self.inflight:
             return
+        if self.call_budget_exhausted():
+            self.get_logger().warn(
+                f"Gemini call budget exhausted: {self.report_index}/{self.max_calls}",
+                throttle_duration_sec=10.0,
+            )
+            return
 
         with self.latest_lock:
             msg = self.latest_msg
@@ -127,6 +136,11 @@ class GeminiFrameAnalyzerNode(Node):
 
         self.inflight = True
         threading.Thread(target=self.analyze_frame, args=(msg,), daemon=True).start()
+
+    def call_budget_exhausted(self):
+        """Return true when the configured Gemini call budget has been consumed."""
+
+        return self.max_calls > 0 and self.report_index >= self.max_calls
 
     def analyze_frame(self, msg):
         """Send one image frame to Gemini and publish a structured GeminiReport."""
