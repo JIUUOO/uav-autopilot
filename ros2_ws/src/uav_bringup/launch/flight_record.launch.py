@@ -167,14 +167,14 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_usb_cam", default_value="true"),
         DeclareLaunchArgument("enable_mission_node", default_value="true"),
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),  # ros package
-        DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),  # ros executable
+        DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter_land"),  # ros executable
         DeclareLaunchArgument("mission_node_name", default_value="mission_node"),  # ros node
         DeclareLaunchArgument("mission_port", default_value=mission_default_port),
         DeclareLaunchArgument("dry_run", default_value="true"),
-        DeclareLaunchArgument("altitude_m", default_value="1.0"),
+        DeclareLaunchArgument("altitude_m", default_value="3.5"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
-        DeclareLaunchArgument("land_speed_cm_s", default_value="30.0"),  # Final LAND descent speed near the ground (cm/s)
+        DeclareLaunchArgument("land_speed_cm_s", default_value="25.0"),  # Final LAND descent speed near the ground (cm/s)
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),  # Initial, high-altitude LAND descent speed (cm/s)
         DeclareLaunchArgument("land_param_timeout_sec", default_value="5.0"),  # Max wait time for Pixhawk parameter confirmation (sec)
         DeclareLaunchArgument("enable_ntrip", default_value="true"),
