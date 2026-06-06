@@ -55,8 +55,14 @@ def _make_gemini_node(context, *_args, **_kwargs):
         return []
 
     image_topic = _gemini_image_topic(context)
+    analysis_mode = LaunchConfiguration("gemini_analysis_mode").perform(context).strip().lower()
+    if analysis_mode == "auto":
+        experiment_mode = LaunchConfiguration("experiment_mode").perform(context).strip().lower()
+        analysis_mode = "on_image" if experiment_mode == "selector" else "periodic"
+
     return [
         LogInfo(msg=f"[gemini] image_topic: {image_topic}"),
+        LogInfo(msg=f"[gemini] analysis_mode: {analysis_mode}"),
         Node(
             package="uav_vision",
             executable="gemini_frame_analyzer",
@@ -67,7 +73,7 @@ def _make_gemini_node(context, *_args, **_kwargs):
                 "report_topic": LaunchConfiguration("gemini_report_topic"),
                 "model": LaunchConfiguration("gemini_model"),
                 "analysis_period_sec": LaunchConfiguration("gemini_period_sec"),
-                "analysis_mode": LaunchConfiguration("gemini_analysis_mode"),
+                "analysis_mode": analysis_mode,
                 "trigger_topic": LaunchConfiguration("gemini_trigger_topic"),
                 "max_calls": LaunchConfiguration("gemini_max_calls"),
                 "prompt_version": LaunchConfiguration("gemini_prompt_version"),
@@ -123,6 +129,7 @@ def generate_launch_description():
     frame_quality_topic = "/uav/vision/frame_quality"
     gemini_report_topic = "/uav/vision/gemini_report"
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
+    frame_selection_trigger_topic = "/uav/vision/select_frame_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
     target_feedback_topic = "/uav/vision/target_feedback"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
@@ -142,6 +149,7 @@ def generate_launch_description():
         frame_quality_topic,
         gemini_report_topic,
         gemini_trigger_topic,
+        frame_selection_trigger_topic,
         candidate_tracks_topic,
         target_feedback_topic,
         person_position_estimate_topic,
@@ -229,6 +237,8 @@ def generate_launch_description():
             "imu_topic": LaunchConfiguration("imu_topic"),
             "selected_image_topic": LaunchConfiguration("selected_image_topic"),
             "quality_topic": LaunchConfiguration("frame_quality_topic"),
+            "selection_mode": LaunchConfiguration("selector_mode"),
+            "selection_trigger_topic": LaunchConfiguration("frame_selection_trigger_topic"),
             "sample_hz": LaunchConfiguration("selector_sample_hz"),
             "selection_window_sec": LaunchConfiguration("selection_window_sec"),
             "score_width": LaunchConfiguration("selector_score_width"),
@@ -362,11 +372,16 @@ def generate_launch_description():
         parameters=[{
             "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
             "trigger_topic": LaunchConfiguration("gemini_trigger_topic"),
+            "selection_trigger_topic": LaunchConfiguration("frame_selection_trigger_topic"),
+            "selected_image_topic": LaunchConfiguration("selected_image_topic"),
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "capture_mode": LaunchConfiguration("gimbal_scan_capture_mode"),
             "preset_far_pwm": LaunchConfiguration("gimbal_preset_far_pwm"),
             "preset_near_pwm": LaunchConfiguration("gimbal_preset_near_pwm"),
             "scan_sequence": LaunchConfiguration("gimbal_scan_sequence"),
             "settle_sec": LaunchConfiguration("gimbal_scan_settle_sec"),
             "post_trigger_sec": LaunchConfiguration("gimbal_scan_post_trigger_sec"),
+            "analysis_timeout_sec": LaunchConfiguration("gimbal_scan_analysis_timeout_sec"),
             "scan_count": LaunchConfiguration("gimbal_scan_count"),
             "auto_start": LaunchConfiguration("gimbal_scan_auto_start"),
         }],
@@ -459,7 +474,12 @@ def generate_launch_description():
         DeclareLaunchArgument("raw_image_topic", default_value=raw_image_topic),
         DeclareLaunchArgument("selected_image_topic", default_value=selected_image_topic),
         DeclareLaunchArgument("frame_quality_topic", default_value=frame_quality_topic),
+        DeclareLaunchArgument(
+            "frame_selection_trigger_topic",
+            default_value=frame_selection_trigger_topic,
+        ),
         DeclareLaunchArgument("imu_topic", default_value="/mavros/imu/data"),
+        DeclareLaunchArgument("selector_mode", default_value="both"),
         DeclareLaunchArgument("selector_sample_hz", default_value="5.0"),
         DeclareLaunchArgument("selection_window_sec", default_value="5.0"),
         DeclareLaunchArgument("selector_score_width", default_value="160"),
@@ -472,7 +492,7 @@ def generate_launch_description():
         DeclareLaunchArgument("gemini_report_topic", default_value=gemini_report_topic),
         DeclareLaunchArgument("gemini_trigger_topic", default_value=gemini_trigger_topic),
         DeclareLaunchArgument("gemini_model", default_value="gemini-2.5-flash"),
-        DeclareLaunchArgument("gemini_analysis_mode", default_value="periodic"),
+        DeclareLaunchArgument("gemini_analysis_mode", default_value="auto"),
         DeclareLaunchArgument("gemini_period_sec", default_value="5.0"),
         DeclareLaunchArgument("gemini_max_calls", default_value="0"),
         DeclareLaunchArgument("gemini_prompt_version", default_value="person_bbox_v1"),
@@ -531,8 +551,10 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
         DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
         DeclareLaunchArgument("gimbal_scan_sequence", default_value="PRESET_FAR,PRESET_NEAR"),
+        DeclareLaunchArgument("gimbal_scan_capture_mode", default_value="selector_event"),
         DeclareLaunchArgument("gimbal_scan_settle_sec", default_value="1.0"),
         DeclareLaunchArgument("gimbal_scan_post_trigger_sec", default_value="0.2"),
+        DeclareLaunchArgument("gimbal_scan_analysis_timeout_sec", default_value="30.0"),
         DeclareLaunchArgument("gimbal_scan_count", default_value="1"),
         DeclareLaunchArgument("gimbal_scan_auto_start", default_value="true"),
         DeclareLaunchArgument("enable_mission_node", default_value="false"),

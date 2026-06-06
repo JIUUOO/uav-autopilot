@@ -67,8 +67,10 @@ class GeminiFrameAnalyzerNode(Node):
         self.inflight = False
         self.report_index = 0
 
-        if self.analysis_mode not in {"periodic", "event", "both"}:
-            raise ValueError("analysis_mode must be 'periodic', 'event', or 'both'.")
+        if self.analysis_mode not in {"periodic", "event", "both", "on_image"}:
+            raise ValueError(
+                "analysis_mode must be 'periodic', 'event', 'both', or 'on_image'."
+            )
 
         self.client = self.make_client()
         self.create_subscription(Image, self.image_topic, self.on_image, 10)
@@ -108,6 +110,8 @@ class GeminiFrameAnalyzerNode(Node):
     def on_image(self, msg):
         with self.latest_lock:
             self.latest_msg = msg
+        if self.analysis_mode == "on_image":
+            self.request_analysis(source="image", msg=msg)
 
     def on_timer(self):
         self.request_analysis(source="timer")
@@ -115,7 +119,7 @@ class GeminiFrameAnalyzerNode(Node):
     def on_trigger(self, _msg):
         self.request_analysis(source="trigger")
 
-    def request_analysis(self, *, source: str):
+    def request_analysis(self, *, source: str, msg=None):
         """Start Gemini analysis for the latest image when the analyzer is idle."""
 
         if self.client is None or self.inflight:
@@ -127,8 +131,9 @@ class GeminiFrameAnalyzerNode(Node):
             )
             return
 
-        with self.latest_lock:
-            msg = self.latest_msg
+        if msg is None:
+            with self.latest_lock:
+                msg = self.latest_msg
 
         if msg is None:
             self.get_logger().warn("No image received yet.", throttle_duration_sec=10.0)

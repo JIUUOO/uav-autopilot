@@ -7,6 +7,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
 from sensor_msgs.msg import Imu
+from std_msgs.msg import Empty
 from uav_interfaces.msg import FrameQuality
 
 try:
@@ -32,6 +33,8 @@ class FrameQualitySelectorNode(Node):
         self.declare_parameter("imu_topic", "/mavros/imu/data")
         self.declare_parameter("selected_image_topic", "/uav/vision/selected_frame/image_raw")
         self.declare_parameter("quality_topic", "/uav/vision/frame_quality")
+        self.declare_parameter("selection_mode", "periodic")
+        self.declare_parameter("selection_trigger_topic", "/uav/vision/select_frame_trigger")
         self.declare_parameter("sample_hz", 5.0)
         self.declare_parameter("selection_window_sec", 5.0)
         self.declare_parameter("score_width", 160)
@@ -45,6 +48,10 @@ class FrameQualitySelectorNode(Node):
         self.imu_topic = str(self.get_parameter("imu_topic").value)
         self.selected_image_topic = str(self.get_parameter("selected_image_topic").value)
         self.quality_topic = str(self.get_parameter("quality_topic").value)
+        self.selection_mode = str(self.get_parameter("selection_mode").value).strip().lower()
+        self.selection_trigger_topic = str(
+            self.get_parameter("selection_trigger_topic").value
+        )
         self.sample_hz = float(self.get_parameter("sample_hz").value)
         self.selection_window_sec = float(self.get_parameter("selection_window_sec").value)
         self.score_width = int(self.get_parameter("score_width").value)
@@ -58,6 +65,8 @@ class FrameQualitySelectorNode(Node):
             self.get_logger().error(
                 "Missing OpenCV or NumPy. Install python3-opencv and python3-numpy."
             )
+        if self.selection_mode not in {"periodic", "event", "both"}:
+            raise ValueError("selection_mode must be 'periodic', 'event', or 'both'.")
 
         self.latest_image = None
         self.latest_yaw_rate_rad_s = 0.0
@@ -68,9 +77,17 @@ class FrameQualitySelectorNode(Node):
         self.best_gray = None
         self.window_index = 0
         self.window_start_time = time.monotonic()
+        self.window_active = self.selection_mode in {"periodic", "both"}
 
         self.create_subscription(Image, self.image_topic, self.on_image, 10)
         self.create_subscription(Imu, self.imu_topic, self.on_imu, 10)
+        if self.selection_mode in {"event", "both"}:
+            self.create_subscription(
+                Empty,
+                self.selection_trigger_topic,
+                self.on_selection_trigger,
+                10,
+            )
         self.selected_image_pub = self.create_publisher(Image, self.selected_image_topic, 10)
         self.quality_pub = self.create_publisher(FrameQuality, self.quality_topic, 10)
 
@@ -80,7 +97,8 @@ class FrameQualitySelectorNode(Node):
         self.get_logger().warn(
             f"Frame quality selector started: image={self.image_topic}, "
             f"imu={self.imu_topic}, sample_hz={self.sample_hz}, "
-            f"window={self.selection_window_sec}s"
+            f"window={self.selection_window_sec}s, mode={self.selection_mode}, "
+            f"trigger={self.selection_trigger_topic}"
         )
 
     def on_image(self, msg):
@@ -89,8 +107,17 @@ class FrameQualitySelectorNode(Node):
     def on_imu(self, msg):
         self.latest_yaw_rate_rad_s = float(msg.angular_velocity.z)
 
+    def on_selection_trigger(self, _msg):
+        """Start a fresh selection window using only frames received after this trigger."""
+
+        self.reset_window(active=True)
+        self.latest_image = None
+        self.get_logger().info(f"Started event selection window={self.window_index}.")
+
     def on_timer(self):
         if cv2 is None or np is None:
+            return
+        if not self.window_active:
             return
 
         msg = self.latest_image
@@ -114,7 +141,8 @@ class FrameQualitySelectorNode(Node):
 
         if time.monotonic() - self.window_start_time >= self.selection_window_sec:
             self.publish_best_frame()
-            self.reset_window()
+            keep_active = self.selection_mode in {"periodic", "both"}
+            self.reset_window(active=keep_active)
 
     def evaluate_frame(self, msg):
         rgb = self.image_msg_to_rgb_array(msg)
@@ -208,13 +236,15 @@ class FrameQualitySelectorNode(Node):
             f"yaw_rate={selected_quality.yaw_rate_rad_s:.3f}"
         )
 
-    def reset_window(self):
+    def reset_window(self, *, active=None):
         self.window_index += 1
         self.window_start_time = time.monotonic()
         self.best_image = None
         self.best_quality = None
         self.best_score = None
         self.best_gray = None
+        if active is not None:
+            self.window_active = active
 
     def resize_for_score(self, gray):
         if gray.shape[1] <= self.score_width:
