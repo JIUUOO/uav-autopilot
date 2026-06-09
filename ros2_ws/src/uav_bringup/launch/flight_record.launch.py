@@ -131,6 +131,7 @@ def generate_launch_description():
             "dry_run": LaunchConfiguration("dry_run"),
             "altitude_m": LaunchConfiguration("altitude_m"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
+            "min_gps_fix_type": LaunchConfiguration("min_gps_fix_type"),
             "set_land_speed_params": LaunchConfiguration("set_land_speed_params"),
             "land_speed_cm_s": LaunchConfiguration("land_speed_cm_s"),
             "land_speed_high_cm_s": LaunchConfiguration("land_speed_high_cm_s"),
@@ -173,6 +174,7 @@ def generate_launch_description():
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("altitude_m", default_value="3.5"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
+        DeclareLaunchArgument("min_gps_fix_type", default_value="5"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
         DeclareLaunchArgument("land_speed_cm_s", default_value="25.0"),  # Final LAND descent speed near the ground (cm/s)
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),  # Initial, high-altitude LAND descent speed (cm/s)
