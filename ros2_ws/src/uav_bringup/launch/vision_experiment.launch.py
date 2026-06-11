@@ -136,6 +136,7 @@ def generate_launch_description():
     topdown_centering_feedback_topic = "/uav/vision/topdown_centering_feedback"
     target_position_estimate_topic = "/uav/vision/target_position_estimate"
     target_feedback_topic = "/uav/vision/target_feedback"
+    mission_state_topic = "/uav/mission/state"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
@@ -159,6 +160,7 @@ def generate_launch_description():
         topdown_centering_feedback_topic,
         target_position_estimate_topic,
         target_feedback_topic,
+        mission_state_topic,
         person_position_estimate_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
@@ -316,6 +318,68 @@ def generate_launch_description():
             "feedback_move_cooldown_sec": LaunchConfiguration("feedback_move_cooldown_sec"),
             "max_feedback_moves_per_waypoint": LaunchConfiguration("max_feedback_moves_per_waypoint"),
             "max_total_feedback_moves": LaunchConfiguration("max_total_feedback_moves"),
+            "front_feedback_topic": LaunchConfiguration("target_feedback_topic"),
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "front_feedback_timeout_sec": LaunchConfiguration("target_feedback_timeout_sec"),
+            "search_feedback_wait_sec": LaunchConfiguration("mission_search_feedback_wait_sec"),
+            "front_max_step_m": LaunchConfiguration("max_feedback_step_m"),
+            "front_move_acceptance_m": LaunchConfiguration("feedback_move_acceptance_m"),
+            "front_move_timeout_sec": LaunchConfiguration("feedback_move_timeout_sec"),
+            "front_max_total_moves": LaunchConfiguration("max_total_feedback_moves"),
+            "gimbal_pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
+            "gimbal_pwm_min": LaunchConfiguration("gimbal_pwm_min"),
+            "gimbal_pwm_max": LaunchConfiguration("gimbal_pwm_max"),
+            "topdown_gimbal_pwm": LaunchConfiguration("mission_topdown_gimbal_pwm"),
+            "return_gimbal_pwm": LaunchConfiguration("mission_return_gimbal_pwm"),
+            "gimbal_command_period_sec": LaunchConfiguration(
+                "mission_gimbal_command_period_sec"
+            ),
+            "topdown_gimbal_settle_sec": LaunchConfiguration(
+                "mission_topdown_gimbal_settle_sec"
+            ),
+            "frame_selection_trigger_topic": LaunchConfiguration(
+                "frame_selection_trigger_topic"
+            ),
+            "request_fresh_detection_after_topdown": LaunchConfiguration(
+                "mission_request_fresh_detection_after_topdown"
+            ),
+            "request_fresh_detection_during_search": LaunchConfiguration(
+                "mission_request_fresh_detection_during_search"
+            ),
+            "topdown_feedback_topic": LaunchConfiguration(
+                "topdown_centering_feedback_topic"
+            ),
+            "target_estimate_topic": LaunchConfiguration(
+                "target_position_estimate_topic"
+            ),
+            "topdown_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_feedback_timeout_sec"
+            ),
+            "topdown_initial_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_initial_feedback_timeout_sec"
+            ),
+            "topdown_post_move_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_post_move_feedback_timeout_sec"
+            ),
+            "topdown_total_timeout_sec": LaunchConfiguration(
+                "mission_topdown_total_timeout_sec"
+            ),
+            "topdown_max_step_m": LaunchConfiguration("topdown_max_step_m"),
+            "topdown_move_acceptance_m": LaunchConfiguration(
+                "mission_topdown_move_acceptance_m"
+            ),
+            "topdown_move_timeout_sec": LaunchConfiguration(
+                "mission_topdown_move_timeout_sec"
+            ),
+            "topdown_move_cooldown_sec": LaunchConfiguration(
+                "mission_topdown_move_cooldown_sec"
+            ),
+            "topdown_max_moves": LaunchConfiguration("mission_topdown_max_moves"),
+            "target_estimate_timeout_sec": LaunchConfiguration(
+                "mission_target_estimate_timeout_sec"
+            ),
+            "mission_state_topic": LaunchConfiguration("mission_state_topic"),
+            "completion_mode": LaunchConfiguration("mission_completion_mode"),
             "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
             "enable_low_altitude_inspection": LaunchConfiguration("enable_low_altitude_inspection"),
             "inspect_altitude_m": LaunchConfiguration("inspect_altitude_m"),
@@ -684,10 +748,40 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
         DeclareLaunchArgument("mission_node_name", default_value="mission_node"),
+        DeclareLaunchArgument("mission_state_topic", default_value=mission_state_topic),
         DeclareLaunchArgument("mission_port", default_value=mission_default_port),
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("mission_altitude_m", default_value="3.5"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
+        DeclareLaunchArgument("mission_topdown_gimbal_pwm", default_value="0"),
+        DeclareLaunchArgument("mission_search_feedback_wait_sec", default_value="10.0"),
+        DeclareLaunchArgument("mission_return_gimbal_pwm", default_value="1550"),
+        DeclareLaunchArgument("mission_gimbal_command_period_sec", default_value="1.0"),
+        DeclareLaunchArgument("mission_topdown_gimbal_settle_sec", default_value="2.0"),
+        DeclareLaunchArgument(
+            "mission_request_fresh_detection_after_topdown",
+            default_value="true",
+        ),
+        DeclareLaunchArgument(
+            "mission_request_fresh_detection_during_search",
+            default_value="true",
+        ),
+        DeclareLaunchArgument("mission_topdown_feedback_timeout_sec", default_value="2.0"),
+        DeclareLaunchArgument(
+            "mission_topdown_initial_feedback_timeout_sec",
+            default_value="30.0",
+        ),
+        DeclareLaunchArgument(
+            "mission_topdown_post_move_feedback_timeout_sec",
+            default_value="5.0",
+        ),
+        DeclareLaunchArgument("mission_topdown_total_timeout_sec", default_value="90.0"),
+        DeclareLaunchArgument("mission_topdown_move_acceptance_m", default_value="0.25"),
+        DeclareLaunchArgument("mission_topdown_move_timeout_sec", default_value="10.0"),
+        DeclareLaunchArgument("mission_topdown_move_cooldown_sec", default_value="1.0"),
+        DeclareLaunchArgument("mission_topdown_max_moves", default_value="20"),
+        DeclareLaunchArgument("mission_target_estimate_timeout_sec", default_value="8.0"),
+        DeclareLaunchArgument("mission_completion_mode", default_value="LOITER"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
         DeclareLaunchArgument("land_speed_cm_s", default_value="30.0"),
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),
