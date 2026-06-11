@@ -95,10 +95,10 @@ class GimbalPitchControllerNode(Node):
         self.last_safety_state = "active"
 
     def on_gemini_report(self, msg):
-        if not msg.parsed_ok or not msg.person_detected:
+        if not msg.parsed_ok or not msg.target_detected:
             return
 
-        candidate = self.find_candidate(msg.person_candidates, msg.primary_candidate_index)
+        candidate = self.find_candidate(msg.target_candidates, msg.primary_candidate_index)
         if candidate is None:
             self.last_safety_state = "missing_primary_candidate"
             return

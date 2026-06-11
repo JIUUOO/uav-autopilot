@@ -437,7 +437,7 @@ class BoundedScoutMissionNode(Node):
             return False
 
         candidate = self.find_candidate(
-            report.person_candidates,
+            report.target_candidates,
             report.primary_candidate_index,
         )
         confidence_ok = (
@@ -445,8 +445,8 @@ class BoundedScoutMissionNode(Node):
             and candidate.confidence >= self.inspection_confidence_threshold
         )
 
-        if report.person_detected and confidence_ok:
-            if self.disable_inspection_for_person:
+        if report.target_detected and confidence_ok:
+            if self.disable_inspection_for_person and self.is_person_candidate(candidate):
                 self.get_logger().warn(
                     "Inspection blocked: person detected in Gemini report. "
                     f"Keeping scout altitude >= {self.person_safe_altitude_m:.1f}m."
@@ -711,6 +711,11 @@ class BoundedScoutMissionNode(Node):
             ),
             None,
         )
+
+    @staticmethod
+    def is_person_candidate(candidate):
+        label = candidate.target_label.strip().lower()
+        return "person" in label or "human" in label
 
     @staticmethod
     def parse_float_list(value: str):

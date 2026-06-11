@@ -14,7 +14,7 @@ from std_msgs.msg import Empty
 from uav_interfaces.msg import GeminiReport
 from uav_vision.common.gemini_utils import append_error
 from uav_vision.common.gemini_utils import as_bool
-from uav_vision.common.gemini_utils import as_person_candidates
+from uav_vision.common.gemini_utils import as_target_candidates
 from uav_vision.common.gemini_utils import find_candidate
 from uav_vision.common.gemini_utils import gimbal_preset_for_candidate
 from uav_vision.common.gemini_utils import make_request_id
@@ -43,6 +43,7 @@ class GeminiFrameAnalyzerNode(Node):
         self.declare_parameter("trigger_topic", "/uav/vision/analyze_trigger")
         self.declare_parameter("max_calls", 0)  # 0: unlimited
         self.declare_parameter("prompt_version", DEFAULT_PROMPT_VERSION)
+        self.declare_parameter("target_query", "person")
         self.declare_parameter("max_width", 640)
         self.declare_parameter("jpeg_quality", 70)
         self.declare_parameter("save_reports", True)
@@ -56,7 +57,11 @@ class GeminiFrameAnalyzerNode(Node):
         self.trigger_topic = str(self.get_parameter("trigger_topic").value)
         self.max_calls = max(int(self.get_parameter("max_calls").value), 0)
         self.prompt_version = str(self.get_parameter("prompt_version").value)
-        self.analysis_prompt, self.prompt_version = get_prompt(self.prompt_version)
+        self.target_query = str(self.get_parameter("target_query").value).strip()
+        self.analysis_prompt, self.prompt_version = get_prompt(
+            self.prompt_version,
+            self.target_query,
+        )
         self.max_width = int(self.get_parameter("max_width").value)
         self.jpeg_quality = int(self.get_parameter("jpeg_quality").value)
         self.save_reports = bool(self.get_parameter("save_reports").value)
@@ -87,7 +92,8 @@ class GeminiFrameAnalyzerNode(Node):
         self.get_logger().warn(
             f"Gemini frame analyzer started: image={self.image_topic}, "
             f"report={self.report_topic}, model={self.model}, "
-            f"prompt={self.prompt_version}, mode={self.analysis_mode}, "
+            f"prompt={self.prompt_version}, target={self.target_query!r}, "
+            f"mode={self.analysis_mode}, "
             f"trigger={self.trigger_topic}, period={self.analysis_period_sec}s, "
             f"max_calls={self.max_calls}"
         )
@@ -231,22 +237,25 @@ class GeminiFrameAnalyzerNode(Node):
         report.error_message = error_message
         report.primary_candidate_index = -1
         report.recommended_gimbal_preset = "HOLD"
+        report.target_query = self.target_query
 
         if isinstance(parsed, dict):
             report.scene_summary = str(parsed.get("scene_summary", ""))
-            report.person_candidates = as_person_candidates(
-                parsed.get("person_candidates", [])
+            report.target_candidates = as_target_candidates(
+                parsed.get("target_candidates", [])
             )
-            report.person_detected = (
-                as_bool(parsed.get("person_detected", False))
-                or bool(report.person_candidates)
+            for candidate in report.target_candidates:
+                candidate.target_label = self.target_query
+            report.target_detected = (
+                as_bool(parsed.get("target_detected", False))
+                or bool(report.target_candidates)
             )
             report.primary_candidate_index = select_primary_candidate_index(
                 parsed.get("primary_candidate_index", -1),
-                report.person_candidates,
+                report.target_candidates,
             )
             primary_candidate = find_candidate(
-                report.person_candidates,
+                report.target_candidates,
                 report.primary_candidate_index,
             )
             report.recommended_gimbal_preset = gimbal_preset_for_candidate(
@@ -278,12 +287,14 @@ class GeminiFrameAnalyzerNode(Node):
             "parsed_ok": report.parsed_ok,
             "error_message": report.error_message,
             "scene_summary": report.scene_summary,
-            "person_detected": report.person_detected,
+            "target_query": report.target_query,
+            "target_detected": report.target_detected,
             "primary_candidate_index": report.primary_candidate_index,
             "recommended_gimbal_preset": report.recommended_gimbal_preset,
-            "person_candidates": [
+            "target_candidates": [
                 {
                     "candidate_index": candidate.candidate_index,
+                    "target_label": candidate.target_label,
                     "confidence": candidate.confidence,
                     "bbox_norm": {
                         "x_min": candidate.bbox_x_min_norm,
@@ -293,7 +304,7 @@ class GeminiFrameAnalyzerNode(Node):
                     },
                     "distance_bucket": candidate.distance_bucket,
                 }
-                for candidate in report.person_candidates
+                for candidate in report.target_candidates
             ],
             "raw_json": report.raw_json,
         }

@@ -2,6 +2,7 @@ std_msgs/Header header
 
 bool has_target
 uint32 track_id
+string target_label
 float32 priority_score
 
 float32 center_x_norm

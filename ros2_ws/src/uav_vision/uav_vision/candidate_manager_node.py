@@ -19,6 +19,7 @@ class TrackState:
     observations: int
     last_call_index: int
     last_request_id: str
+    target_label: str
     latest_confidence: float
     best_confidence: float
     center_x_norm: float
@@ -31,9 +32,9 @@ class TrackState:
 
 class CandidateManagerNode(Node):
     """
-    Accumulate Gemini person candidates into image-space tracks.
+    Accumulate Gemini target candidates into image-space tracks.
 
-    This node only groups repeated PersonCandidate detections by normalized bbox center;
+    This node only groups repeated TargetCandidate detections by label and bbox center;
     it does not estimate RTK/world coordinates or command vehicle movement.
     """
 
@@ -79,12 +80,17 @@ class CandidateManagerNode(Node):
         primary_track_id = 0
         updated_track_ids = []
 
-        for candidate in report.person_candidates:
+        for candidate in report.target_candidates:
             if candidate.confidence < self.min_confidence:
                 continue
 
             center_x, center_y = bbox_center(candidate)
-            track = self.find_matching_track(center_x, center_y, now)
+            track = self.find_matching_track(
+                candidate.target_label,
+                center_x,
+                center_y,
+                now,
+            )
             if track is None:
                 track = self.create_track()
 
@@ -113,12 +119,14 @@ class CandidateManagerNode(Node):
         for track_id in stale_ids:
             del self.tracks[track_id]
 
-    def find_matching_track(self, center_x, center_y, now):
+    def find_matching_track(self, target_label, center_x, center_y, now):
         best_track = None
         best_distance = float("inf")
 
         for track in self.tracks.values():
             if self.max_track_age_sec > 0.0 and now - track.updated_at > self.max_track_age_sec:
+                continue
+            if track.target_label != target_label:
                 continue
 
             distance = math.hypot(
@@ -137,6 +145,7 @@ class CandidateManagerNode(Node):
             observations=0,
             last_call_index=0,
             last_request_id="",
+            target_label="",
             latest_confidence=0.0,
             best_confidence=0.0,
             center_x_norm=0.0,
@@ -154,6 +163,7 @@ class CandidateManagerNode(Node):
         track.observations += 1
         track.last_call_index = report.call_index
         track.last_request_id = report.request_id
+        track.target_label = candidate.target_label
         track.latest_confidence = float(candidate.confidence)
         track.best_confidence = max(track.best_confidence, track.latest_confidence)
         track.center_x_norm = float(center_x)
@@ -198,6 +208,7 @@ class CandidateManagerNode(Node):
         msg.observations = int(track.observations)
         msg.last_call_index = int(track.last_call_index)
         msg.last_request_id = track.last_request_id
+        msg.target_label = track.target_label
         msg.latest_confidence = float(track.latest_confidence)
         msg.best_confidence = float(track.best_confidence)
         msg.center_x_norm = float(track.center_x_norm)

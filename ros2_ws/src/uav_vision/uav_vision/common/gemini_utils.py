@@ -2,7 +2,7 @@
 
 import json
 
-from uav_interfaces.msg import PersonCandidate
+from uav_interfaces.msg import TargetCandidate
 
 
 def make_request_id(msg, call_index):
@@ -35,8 +35,8 @@ def parse_json_response(raw_text):
         return None
 
 
-def as_person_candidates(value):
-    """Convert Gemini JSON person candidates into validated PersonCandidate messages."""
+def as_target_candidates(value):
+    """Convert Gemini JSON target candidates into validated TargetCandidate messages."""
 
     if not isinstance(value, list):
         return []
@@ -50,8 +50,9 @@ def as_person_candidates(value):
         if not isinstance(bbox, dict):
             bbox = {}
 
-        candidate = PersonCandidate()
+        candidate = TargetCandidate()
         candidate.candidate_index = fallback_index
+        candidate.target_label = str(item.get("target_label", "")).strip()
         candidate.confidence = clamp_unit(item.get("confidence", 0.0))
         candidate.bbox_x_min_norm = clamp_unit(bbox.get("x_min", 0.0))
         candidate.bbox_y_min_norm = clamp_unit(bbox.get("y_min", 0.0))

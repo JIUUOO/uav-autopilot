@@ -1,4 +1,4 @@
-"""Geometry helpers for normalized PersonCandidate bounding boxes."""
+"""Geometry helpers for normalized target-candidate bounding boxes."""
 
 
 def bbox_center(candidate):

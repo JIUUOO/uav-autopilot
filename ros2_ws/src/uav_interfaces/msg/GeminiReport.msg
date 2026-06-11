@@ -12,9 +12,10 @@ float32 latency_sec
 bool parsed_ok
 string error_message
 
-bool person_detected
+string target_query
+bool target_detected
 int32 primary_candidate_index
-uav_interfaces/PersonCandidate[] person_candidates
+uav_interfaces/TargetCandidate[] target_candidates
 string recommended_gimbal_preset
 
 string scene_summary
