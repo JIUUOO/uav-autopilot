@@ -133,6 +133,7 @@ def generate_launch_description():
     frame_selection_trigger_topic = "/uav/vision/select_frame_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
     tracked_target_topic = "/uav/vision/tracked_target"
+    topdown_centering_feedback_topic = "/uav/vision/topdown_centering_feedback"
     target_feedback_topic = "/uav/vision/target_feedback"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
@@ -154,6 +155,7 @@ def generate_launch_description():
         frame_selection_trigger_topic,
         candidate_tracks_topic,
         tracked_target_topic,
+        topdown_centering_feedback_topic,
         target_feedback_topic,
         person_position_estimate_topic,
         gimbal_pitch_target_topic,
@@ -427,6 +429,37 @@ def generate_launch_description():
         }],
     )
 
+    topdown_centering_feedback_node = Node(
+        package="uav_vision",
+        executable="topdown_centering_feedback",
+        name="topdown_centering_feedback",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_topdown_centering_feedback")),
+        parameters=[{
+            "tracked_target_topic": LaunchConfiguration("tracked_target_topic"),
+            "feedback_topic": LaunchConfiguration("topdown_centering_feedback_topic"),
+            "target_center_x_norm": LaunchConfiguration("topdown_target_center_x_norm"),
+            "target_center_y_norm": LaunchConfiguration("topdown_target_center_y_norm"),
+            "center_tolerance_x_norm": LaunchConfiguration(
+                "topdown_center_tolerance_x_norm"
+            ),
+            "center_tolerance_y_norm": LaunchConfiguration(
+                "topdown_center_tolerance_y_norm"
+            ),
+            "body_forward_gain_m": LaunchConfiguration("topdown_body_forward_gain_m"),
+            "body_right_gain_m": LaunchConfiguration("topdown_body_right_gain_m"),
+            "body_forward_sign": LaunchConfiguration("topdown_body_forward_sign"),
+            "body_right_sign": LaunchConfiguration("topdown_body_right_sign"),
+            "swap_image_axes": LaunchConfiguration("topdown_swap_image_axes"),
+            "max_step_m": LaunchConfiguration("topdown_max_step_m"),
+            "min_step_m": LaunchConfiguration("topdown_min_step_m"),
+            "required_centered_frames": LaunchConfiguration(
+                "topdown_required_centered_frames"
+            ),
+            "required_centered_sec": LaunchConfiguration("topdown_required_centered_sec"),
+        }],
+    )
+
     target_feedback_node = Node(
         package="uav_vision",
         executable="target_feedback",
@@ -492,6 +525,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
         DeclareLaunchArgument("enable_target_tracker", default_value="false"),
+        DeclareLaunchArgument("enable_topdown_centering_feedback", default_value="false"),
         DeclareLaunchArgument("enable_target_feedback", default_value="false"),
         DeclareLaunchArgument("enable_person_position_estimator", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
@@ -541,6 +575,23 @@ def generate_launch_description():
         DeclareLaunchArgument("target_tracker_max_replay_frames", default_value="60"),
         DeclareLaunchArgument("target_tracker_stamp_tolerance_sec", default_value="0.05"),
         DeclareLaunchArgument("target_tracker_max_consecutive_failures", default_value="5"),
+        DeclareLaunchArgument(
+            "topdown_centering_feedback_topic",
+            default_value=topdown_centering_feedback_topic,
+        ),
+        DeclareLaunchArgument("topdown_target_center_x_norm", default_value="0.50"),
+        DeclareLaunchArgument("topdown_target_center_y_norm", default_value="0.50"),
+        DeclareLaunchArgument("topdown_center_tolerance_x_norm", default_value="0.06"),
+        DeclareLaunchArgument("topdown_center_tolerance_y_norm", default_value="0.06"),
+        DeclareLaunchArgument("topdown_body_forward_gain_m", default_value="2.0"),
+        DeclareLaunchArgument("topdown_body_right_gain_m", default_value="2.0"),
+        DeclareLaunchArgument("topdown_body_forward_sign", default_value="-1.0"),
+        DeclareLaunchArgument("topdown_body_right_sign", default_value="1.0"),
+        DeclareLaunchArgument("topdown_swap_image_axes", default_value="false"),
+        DeclareLaunchArgument("topdown_max_step_m", default_value="0.30"),
+        DeclareLaunchArgument("topdown_min_step_m", default_value="0.05"),
+        DeclareLaunchArgument("topdown_required_centered_frames", default_value="10"),
+        DeclareLaunchArgument("topdown_required_centered_sec", default_value="1.0"),
         DeclareLaunchArgument("target_feedback_topic", default_value=target_feedback_topic),
         DeclareLaunchArgument("feedback_min_priority_score", default_value="0.50"),
         DeclareLaunchArgument("feedback_center_x_min", default_value="0.40"),
@@ -673,6 +724,7 @@ def generate_launch_description():
         gimbal_scan_node,
         candidate_manager_node,
         target_tracker_node,
+        topdown_centering_feedback_node,
         target_feedback_node,
         person_position_estimator_node,
         OpaqueFunction(function=_make_gemini_node),

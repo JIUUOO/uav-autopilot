@@ -31,6 +31,7 @@ setup(
             'rtk_person_position_estimator = uav_vision.rtk_person_position_estimator_node:main',
             'target_feedback = uav_vision.target_feedback_node:main',
             'target_tracker = uav_vision.target_tracker_node:main',
+            'topdown_centering_feedback = uav_vision.topdown_centering_feedback_node:main',
         ],
     },
 )
