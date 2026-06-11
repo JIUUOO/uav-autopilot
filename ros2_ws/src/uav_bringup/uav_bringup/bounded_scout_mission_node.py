@@ -4,11 +4,11 @@ import math
 import threading
 import time
 
-from pymavlink import mavutil
 import rclpy
 from rclpy.node import Node
 from uav_interfaces.msg import GeminiReport
 
+from uav_bringup.common.local_ned_controller import LocalNedController
 from uav_bringup.common.mission_config import declare_guided_takeoff_params
 from uav_bringup.common.mission_config import load_guided_takeoff_config
 from uav_bringup.common.mission_runtime import MissionRuntime
@@ -26,8 +26,6 @@ Mission flow:
 """
 
 # LOCAL_NED uses x=North, y=East, z=Down; altitude above home is negative z.
-# Position-only SET_POSITION_TARGET_LOCAL_NED: ignore velocity, acceleration, yaw, and yaw-rate.
-POSITION_TARGET_TYPEMASK = 3576
 
 class BoundedScoutMissionNode(Node):
     """
@@ -49,14 +47,23 @@ class BoundedScoutMissionNode(Node):
         self.runtime = MissionRuntime(node=self, config=self.config, stop_event=self.stop_event)
         self.flight_ops = None
 
-        self.local_x = None
-        self.local_y = None
-        self.local_z = None
-        self.last_local_position_time = 0.0
-        self.current_yaw_deg = None
-        self.last_attitude_time = 0.0
-        self.origin_x = None
-        self.origin_y = None
+        self.local_ned = LocalNedController(
+            node=self,
+            runtime=self.runtime,
+            stop_event=self.stop_event,
+            origin_sample_count=self.origin_sample_count,
+            software_radius_m=self.software_radius_m,
+            waypoint_acceptance_m=self.waypoint_acceptance_m,
+            waypoint_timeout_sec=self.waypoint_timeout_sec,
+            setpoint_hz=self.setpoint_hz,
+            local_position_timeout_sec=self.local_position_timeout_sec,
+            yaw_speed_deg_s=self.yaw_speed_deg_s,
+            yaw_acceptance_deg=self.yaw_acceptance_deg,
+            yaw_timeout_sec=self.yaw_timeout_sec,
+            yaw_log_interval_sec=0.5,
+            log_set_yaw=True,
+            log_yaw_reached=True,
+        )
 
         self.latest_report = None
         self.latest_report_time = 0.0
@@ -343,50 +350,7 @@ class BoundedScoutMissionNode(Node):
         return self.goto_offset(f"{waypoint_name}/INSPECT_ASCEND", north_m, east_m, self.config.altitude_m)
 
     def goto_offset(self, label: str, north_m: float, east_m: float, altitude_m: float) -> bool:
-        if not self.target_inside_radius(north_m, east_m, self.software_radius_m):
-            self.get_logger().error(
-                f"Refusing waypoint {label}: radius={math.hypot(north_m, east_m):.2f}m "
-                f"> software_radius_m={self.software_radius_m:.2f}m"
-            )
-            return False
-
-        target_x = self.origin_x + north_m
-        target_y = self.origin_y + east_m
-        target_z = -altitude_m
-
-        self.get_logger().warn(f"Goto {label}: north={north_m:.1f}m east={east_m:.1f}m alt={altitude_m:.1f}m")
-
-        start = time.monotonic()
-        next_send = 0.0
-        send_period = 1.0 / max(self.setpoint_hz, 0.1)
-
-        while rclpy.ok() and not self.stop_event.is_set():
-            now = time.monotonic()
-            self.spin_and_drain()
-
-            if not self.local_position_fresh(now):
-                self.get_logger().error("Local position timeout during waypoint movement.")
-                return False
-
-            if self.current_radius_m() > self.software_radius_m:
-                self.get_logger().error("Software radius breach detected during waypoint movement.")
-                return False
-
-            if now >= next_send:
-                self.send_local_position_target(target_x, target_y, target_z)
-                next_send = now + send_period
-
-            distance_xy = math.hypot(self.local_x - target_x, self.local_y - target_y)
-            if distance_xy <= self.waypoint_acceptance_m:
-                return True
-
-            if now - start > self.waypoint_timeout_sec:
-                self.get_logger().error(f"Waypoint timeout: {label}")
-                return False
-
-            time.sleep(0.05)
-
-        return False
+        return self.local_ned.goto_offset(label, north_m, east_m, altitude_m)
 
     def hold_and_watch_reports(
         self,
@@ -466,149 +430,17 @@ class BoundedScoutMissionNode(Node):
     def set_yaw(self, yaw_deg: float) -> bool:
         """Ask ArduPilot to rotate toward the target yaw while staying in GUIDED mode."""
 
-        self.get_logger().info(f"Set yaw: {yaw_deg:.0f} deg")
-        self.runtime.mav_client.command_long_send(
-            self.runtime.mav_client.master.target_system,
-            self.runtime.mav_client.master.target_component,
-            mavutil.mavlink.MAV_CMD_CONDITION_YAW,
-            0,
-            yaw_deg,
-            self.yaw_speed_deg_s,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-        return self.wait_yaw_reached(yaw_deg)
-
-    def wait_yaw_reached(self, target_yaw_deg: float) -> bool:
-        target_yaw_deg = self.normalize_angle_deg(target_yaw_deg)
-        start = time.monotonic()
-        last_print = 0.0
-
-        while rclpy.ok() and not self.stop_event.is_set():
-            now = time.monotonic()
-            self.spin_and_drain()
-
-            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
-                yaw_error_deg = abs(self.angle_diff_deg(target_yaw_deg, self.current_yaw_deg))
-                if now - last_print > 0.5:
-                    self.get_logger().info(
-                        f"Yaw wait: current={self.current_yaw_deg:.1f} deg "
-                        f"target={target_yaw_deg:.1f} deg error={yaw_error_deg:.1f} deg"
-                    )
-                    last_print = now
-
-                if yaw_error_deg <= self.yaw_acceptance_deg:
-                    self.get_logger().warn(
-                        f"Yaw reached: current={self.current_yaw_deg:.1f} deg "
-                        f"target={target_yaw_deg:.1f} deg"
-                    )
-                    return True
-
-            if now - start > self.yaw_timeout_sec:
-                self.get_logger().error(
-                    f"Yaw timeout: target={target_yaw_deg:.1f} deg "
-                    f"current={self.current_yaw_deg}"
-                )
-                return False
-
-            time.sleep(0.05)
-
-        return False
-
-    @staticmethod
-    def normalize_angle_deg(angle_deg: float) -> float:
-        return angle_deg % 360.0
-
-    @staticmethod
-    def angle_diff_deg(target_deg: float, current_deg: float) -> float:
-        return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+        return self.local_ned.set_yaw(yaw_deg)
 
     @staticmethod
     def yaw_to_target(delta_north_m: float, delta_east_m: float) -> float:
         return math.degrees(math.atan2(delta_east_m, delta_north_m)) % 360.0
 
-    def send_local_position_target(self, x: float, y: float, z: float):
-        """Send a GUIDED position target in LOCAL_NED coordinates."""
-
-        self.runtime.mav_client.set_position_target_local_ned_send(
-            int(time.monotonic() * 1000) & 0xFFFFFFFF,
-            self.runtime.mav_client.master.target_system,
-            self.runtime.mav_client.master.target_component,
-            mavutil.mavlink.MAV_FRAME_LOCAL_NED,
-            POSITION_TARGET_TYPEMASK,
-            x,
-            y,
-            z,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-
     def request_scout_streams(self):
-        local_position_msg_id = mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED
-        self.runtime.mav_client.request_message_interval(local_position_msg_id, 5.0)
-        attitude_msg_id = mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE
-        self.runtime.mav_client.request_message_interval(attitude_msg_id, 10.0)
+        self.local_ned.request_streams(local_position_hz=5.0, attitude_hz=10.0)
 
     def capture_local_origin(self, phase: str) -> bool:
-        samples = []
-        last_sample_time = 0.0
-        start = time.monotonic()
-        while time.monotonic() - start < self.local_position_timeout_sec:
-            self.spin_and_drain()
-            if (
-                self.local_x is not None
-                and self.local_position_fresh(time.monotonic())
-                and self.last_local_position_time > last_sample_time
-            ):
-                samples.append((self.local_x, self.local_y))
-                last_sample_time = self.last_local_position_time
-
-            if len(samples) >= max(self.origin_sample_count, 1):
-                self.origin_x = sum(sample[0] for sample in samples) / len(samples)
-                self.origin_y = sum(sample[1] for sample in samples) / len(samples)
-                self.get_logger().warn(
-                    f"Local origin captured ({phase}): "
-                    f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
-                )
-                return True
-
-            time.sleep(0.05)
-
-        if samples:
-            self.origin_x = sum(sample[0] for sample in samples) / len(samples)
-            self.origin_y = sum(sample[1] for sample in samples) / len(samples)
-            self.get_logger().warn(
-                f"Local origin captured ({phase}, limited samples): "
-                f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
-            )
-            return True
-
-        self.get_logger().error(f"Failed to capture local origin ({phase}).")
-        return False
-
-    def drain_mavlink(self):
-        self.runtime.mav_client.drain_messages(self.on_mavlink_message)
-
-    def on_mavlink_message(self, msg):
-        self.runtime.readiness.process_message(msg)
-
-        if msg.get_type() == "LOCAL_POSITION_NED":
-            self.local_x = float(msg.x)
-            self.local_y = float(msg.y)
-            self.local_z = float(msg.z)
-            self.last_local_position_time = time.monotonic()
-        elif msg.get_type() == "ATTITUDE":
-            self.current_yaw_deg = self.normalize_angle_deg(math.degrees(float(msg.yaw)))
-            self.last_attitude_time = time.monotonic()
+        return self.local_ned.capture_origin(phase)
 
     def on_gemini_report(self, msg):
         self.latest_report = msg
@@ -616,8 +448,7 @@ class BoundedScoutMissionNode(Node):
         self.latest_report_consumed = False
 
     def spin_and_drain(self):
-        rclpy.spin_once(self, timeout_sec=0.0)
-        self.drain_mavlink()
+        self.local_ned.spin_and_drain()
 
     def finish_mission(self):
         if self.finish_mode:
@@ -682,24 +513,17 @@ class BoundedScoutMissionNode(Node):
         return route
 
     def current_radius_m(self) -> float:
-        if self.local_x is None or self.origin_x is None:
-            return 0.0
-        return math.hypot(self.local_x - self.origin_x, self.local_y - self.origin_y)
+        return self.local_ned.current_radius_m()
 
     def current_altitude_m(self) -> float:
-        if self.local_z is None:
-            return 0.0
-        return -self.local_z
+        return self.local_ned.current_altitude_m()
 
     def local_position_fresh(self, now: float) -> bool:
-        return (
-            self.local_x is not None
-            and now - self.last_local_position_time <= self.local_position_timeout_sec
-        )
+        return self.local_ned.local_position_fresh(now)
 
     @staticmethod
     def target_inside_radius(north_m: float, east_m: float, radius_m: float) -> bool:
-        return math.hypot(north_m, east_m) <= radius_m
+        return LocalNedController.target_inside_radius(north_m, east_m, radius_m)
 
     @staticmethod
     def find_candidate(candidates, candidate_index):
