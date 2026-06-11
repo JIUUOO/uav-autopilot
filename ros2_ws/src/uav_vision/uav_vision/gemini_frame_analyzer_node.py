@@ -15,8 +15,6 @@ from uav_interfaces.msg import GeminiReport
 from uav_vision.common.gemini_utils import append_error
 from uav_vision.common.gemini_utils import as_bool
 from uav_vision.common.gemini_utils import as_target_candidates
-from uav_vision.common.gemini_utils import find_candidate
-from uav_vision.common.gemini_utils import gimbal_preset_for_candidate
 from uav_vision.common.gemini_utils import make_request_id
 from uav_vision.common.gemini_utils import parse_json_response
 from uav_vision.common.gemini_utils import select_primary_candidate_index
@@ -236,7 +234,6 @@ class GeminiFrameAnalyzerNode(Node):
         report.parsed_ok = isinstance(parsed, dict)
         report.error_message = error_message
         report.primary_candidate_index = -1
-        report.recommended_gimbal_preset = "HOLD"
         report.target_query = self.target_query
 
         if isinstance(parsed, dict):
@@ -253,13 +250,6 @@ class GeminiFrameAnalyzerNode(Node):
             report.primary_candidate_index = select_primary_candidate_index(
                 parsed.get("primary_candidate_index", -1),
                 report.target_candidates,
-            )
-            primary_candidate = find_candidate(
-                report.target_candidates,
-                report.primary_candidate_index,
-            )
-            report.recommended_gimbal_preset = gimbal_preset_for_candidate(
-                primary_candidate
             )
 
         report.raw_json = raw_text
@@ -290,7 +280,6 @@ class GeminiFrameAnalyzerNode(Node):
             "target_query": report.target_query,
             "target_detected": report.target_detected,
             "primary_candidate_index": report.primary_candidate_index,
-            "recommended_gimbal_preset": report.recommended_gimbal_preset,
             "target_candidates": [
                 {
                     "candidate_index": candidate.candidate_index,

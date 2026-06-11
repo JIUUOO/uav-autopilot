@@ -346,7 +346,6 @@ def generate_launch_description():
         parameters=[{
             "dry_run": LaunchConfiguration("gimbal_dry_run"),
             "command_service": LaunchConfiguration("gimbal_command_service"),
-            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
             "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
             "state_topic": LaunchConfiguration("gimbal_state_topic"),
             "servo_channel": LaunchConfiguration("gimbal_servo_channel"),
@@ -354,13 +353,10 @@ def generate_launch_description():
             "pwm_neutral": LaunchConfiguration("gimbal_pwm_neutral"),
             "pwm_max": LaunchConfiguration("gimbal_pwm_max"),
             "invert_pwm": LaunchConfiguration("gimbal_invert_pwm"),
-            "preset_far_pwm": LaunchConfiguration("gimbal_preset_far_pwm"),
-            "preset_near_pwm": LaunchConfiguration("gimbal_preset_near_pwm"),
             "command_hz": LaunchConfiguration("gimbal_command_hz"),
             "max_rate_pwm_s": LaunchConfiguration("gimbal_max_rate_pwm_s"),
             "command_timeout_sec": LaunchConfiguration("gimbal_command_timeout_sec"),
             "timeout_to_neutral": LaunchConfiguration("gimbal_timeout_to_neutral"),
-            "confidence_threshold": LaunchConfiguration("gimbal_confidence_threshold"),
         }],
     )
 
@@ -551,7 +547,6 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_max_rate_pwm_s", default_value="100.0"),
         DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="10.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
-        DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
         DeclareLaunchArgument("gimbal_scan_sequence", default_value="PRESET_FAR,PRESET_NEAR"),
         DeclareLaunchArgument("gimbal_scan_capture_mode", default_value="selector_event"),
         DeclareLaunchArgument("gimbal_scan_settle_sec", default_value="1.0"),

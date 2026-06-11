@@ -98,18 +98,6 @@ def find_candidate(candidates, candidate_index):
     )
 
 
-def gimbal_preset_for_candidate(candidate):
-    """Map a candidate's visual distance bucket to a rule-based gimbal preset."""
-
-    if candidate is None:
-        return "HOLD"
-    if candidate.distance_bucket == "far":
-        return "PRESET_FAR"
-    if candidate.distance_bucket == "near":
-        return "PRESET_NEAR"
-    return "HOLD"
-
-
 def as_int(value, default):
     """Convert a value to int, or return default if conversion fails."""
 

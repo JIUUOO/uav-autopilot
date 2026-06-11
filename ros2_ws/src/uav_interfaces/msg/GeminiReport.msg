@@ -16,7 +16,6 @@ string target_query
 bool target_detected
 int32 primary_candidate_index
 uav_interfaces/TargetCandidate[] target_candidates
-string recommended_gimbal_preset
 
 string scene_summary
 string raw_json
