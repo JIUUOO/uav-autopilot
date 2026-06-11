@@ -134,6 +134,7 @@ def generate_launch_description():
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
     tracked_target_topic = "/uav/vision/tracked_target"
     topdown_centering_feedback_topic = "/uav/vision/topdown_centering_feedback"
+    target_position_estimate_topic = "/uav/vision/target_position_estimate"
     target_feedback_topic = "/uav/vision/target_feedback"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
@@ -156,6 +157,7 @@ def generate_launch_description():
         candidate_tracks_topic,
         tracked_target_topic,
         topdown_centering_feedback_topic,
+        target_position_estimate_topic,
         target_feedback_topic,
         person_position_estimate_topic,
         gimbal_pitch_target_topic,
@@ -460,6 +462,31 @@ def generate_launch_description():
         }],
     )
 
+    topdown_rtk_localizer_node = Node(
+        package="uav_vision",
+        executable="topdown_rtk_localizer",
+        name="topdown_rtk_localizer",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_topdown_rtk_localizer")),
+        parameters=[{
+            "centering_feedback_topic": LaunchConfiguration(
+                "topdown_centering_feedback_topic"
+            ),
+            "gps_topic": LaunchConfiguration("topdown_rtk_gps_topic"),
+            "estimate_topic": LaunchConfiguration("target_position_estimate_topic"),
+            "sample_count": LaunchConfiguration("topdown_rtk_sample_count"),
+            "sampling_timeout_sec": LaunchConfiguration(
+                "topdown_rtk_sampling_timeout_sec"
+            ),
+            "max_horizontal_stddev_m": LaunchConfiguration(
+                "topdown_rtk_max_horizontal_stddev_m"
+            ),
+            "require_known_covariance": LaunchConfiguration(
+                "topdown_rtk_require_known_covariance"
+            ),
+        }],
+    )
+
     target_feedback_node = Node(
         package="uav_vision",
         executable="target_feedback",
@@ -526,6 +553,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
         DeclareLaunchArgument("enable_target_tracker", default_value="false"),
         DeclareLaunchArgument("enable_topdown_centering_feedback", default_value="false"),
+        DeclareLaunchArgument("enable_topdown_rtk_localizer", default_value="false"),
         DeclareLaunchArgument("enable_target_feedback", default_value="false"),
         DeclareLaunchArgument("enable_person_position_estimator", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
@@ -592,6 +620,18 @@ def generate_launch_description():
         DeclareLaunchArgument("topdown_min_step_m", default_value="0.05"),
         DeclareLaunchArgument("topdown_required_centered_frames", default_value="10"),
         DeclareLaunchArgument("topdown_required_centered_sec", default_value="1.0"),
+        DeclareLaunchArgument(
+            "target_position_estimate_topic",
+            default_value=target_position_estimate_topic,
+        ),
+        DeclareLaunchArgument(
+            "topdown_rtk_gps_topic",
+            default_value="/mavros/global_position/global",
+        ),
+        DeclareLaunchArgument("topdown_rtk_sample_count", default_value="5"),
+        DeclareLaunchArgument("topdown_rtk_sampling_timeout_sec", default_value="3.0"),
+        DeclareLaunchArgument("topdown_rtk_max_horizontal_stddev_m", default_value="1.0"),
+        DeclareLaunchArgument("topdown_rtk_require_known_covariance", default_value="true"),
         DeclareLaunchArgument("target_feedback_topic", default_value=target_feedback_topic),
         DeclareLaunchArgument("feedback_min_priority_score", default_value="0.50"),
         DeclareLaunchArgument("feedback_center_x_min", default_value="0.40"),
@@ -725,6 +765,7 @@ def generate_launch_description():
         candidate_manager_node,
         target_tracker_node,
         topdown_centering_feedback_node,
+        topdown_rtk_localizer_node,
         target_feedback_node,
         person_position_estimator_node,
         OpaqueFunction(function=_make_gemini_node),

@@ -32,6 +32,7 @@ setup(
             'target_feedback = uav_vision.target_feedback_node:main',
             'target_tracker = uav_vision.target_tracker_node:main',
             'topdown_centering_feedback = uav_vision.topdown_centering_feedback_node:main',
+            'topdown_rtk_localizer = uav_vision.topdown_rtk_localizer_node:main',
         ],
     },
 )
