@@ -1,0 +1,22 @@
+std_msgs/Header header
+
+bool tracking
+string status
+string tracker_type
+
+string initialization_request_id
+uint32 initialization_call_index
+int32 initialization_candidate_index
+string target_label
+float32 detection_confidence
+
+float32 bbox_x_min_norm
+float32 bbox_y_min_norm
+float32 bbox_x_max_norm
+float32 bbox_y_max_norm
+float32 center_x_norm
+float32 center_y_norm
+float32 bbox_area_norm
+
+uint32 tracked_frames
+uint32 consecutive_failures

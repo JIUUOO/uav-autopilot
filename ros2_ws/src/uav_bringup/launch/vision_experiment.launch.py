@@ -132,6 +132,7 @@ def generate_launch_description():
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
     frame_selection_trigger_topic = "/uav/vision/select_frame_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
+    tracked_target_topic = "/uav/vision/tracked_target"
     target_feedback_topic = "/uav/vision/target_feedback"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
@@ -152,6 +153,7 @@ def generate_launch_description():
         gemini_trigger_topic,
         frame_selection_trigger_topic,
         candidate_tracks_topic,
+        tracked_target_topic,
         target_feedback_topic,
         person_position_estimate_topic,
         gimbal_pitch_target_topic,
@@ -400,6 +402,31 @@ def generate_launch_description():
         }],
     )
 
+    target_tracker_node = Node(
+        package="uav_vision",
+        executable="target_tracker",
+        name="target_tracker",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_target_tracker")),
+        parameters=[{
+            "image_topic": LaunchConfiguration("raw_image_topic"),
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "tracked_target_topic": LaunchConfiguration("tracked_target_topic"),
+            "tracker_type": LaunchConfiguration("target_tracker_type"),
+            "min_detection_confidence": LaunchConfiguration(
+                "target_tracker_min_detection_confidence"
+            ),
+            "max_buffer_frames": LaunchConfiguration("target_tracker_max_buffer_frames"),
+            "max_replay_frames": LaunchConfiguration("target_tracker_max_replay_frames"),
+            "stamp_tolerance_sec": LaunchConfiguration(
+                "target_tracker_stamp_tolerance_sec"
+            ),
+            "max_consecutive_failures": LaunchConfiguration(
+                "target_tracker_max_consecutive_failures"
+            ),
+        }],
+    )
+
     target_feedback_node = Node(
         package="uav_vision",
         executable="target_feedback",
@@ -464,6 +491,7 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
+        DeclareLaunchArgument("enable_target_tracker", default_value="false"),
         DeclareLaunchArgument("enable_target_feedback", default_value="false"),
         DeclareLaunchArgument("enable_person_position_estimator", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
@@ -506,6 +534,13 @@ def generate_launch_description():
         DeclareLaunchArgument("candidate_match_center_distance", default_value="0.15"),
         DeclareLaunchArgument("candidate_max_track_age_sec", default_value="30.0"),
         DeclareLaunchArgument("candidate_publish_empty", default_value="true"),
+        DeclareLaunchArgument("tracked_target_topic", default_value=tracked_target_topic),
+        DeclareLaunchArgument("target_tracker_type", default_value="AUTO"),
+        DeclareLaunchArgument("target_tracker_min_detection_confidence", default_value="0.50"),
+        DeclareLaunchArgument("target_tracker_max_buffer_frames", default_value="300"),
+        DeclareLaunchArgument("target_tracker_max_replay_frames", default_value="60"),
+        DeclareLaunchArgument("target_tracker_stamp_tolerance_sec", default_value="0.05"),
+        DeclareLaunchArgument("target_tracker_max_consecutive_failures", default_value="5"),
         DeclareLaunchArgument("target_feedback_topic", default_value=target_feedback_topic),
         DeclareLaunchArgument("feedback_min_priority_score", default_value="0.50"),
         DeclareLaunchArgument("feedback_center_x_min", default_value="0.40"),
@@ -637,6 +672,7 @@ def generate_launch_description():
         gimbal_node,
         gimbal_scan_node,
         candidate_manager_node,
+        target_tracker_node,
         target_feedback_node,
         person_position_estimator_node,
         OpaqueFunction(function=_make_gemini_node),

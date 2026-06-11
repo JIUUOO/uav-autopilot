@@ -44,3 +44,18 @@ def image_msg_to_pil(msg):
         raw = b"".join(rows)
 
     return PILImage.frombytes(mode, (msg.width, msg.height), raw, "raw", raw_mode)
+
+
+def image_msg_to_bgr(msg):
+    """Convert a ROS Image message into an OpenCV BGR array."""
+
+    try:
+        import cv2
+        import numpy as np
+    except ImportError as exc:
+        raise RuntimeError(
+            "Missing OpenCV or NumPy. Install/rebuild Docker image first."
+        ) from exc
+
+    rgb = np.asarray(image_msg_to_pil(msg).convert("RGB"))
+    return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)

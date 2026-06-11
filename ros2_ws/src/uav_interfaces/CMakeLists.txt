@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PersonPositionEstimate.msg"
   "msg/TargetCandidate.msg"
   "msg/TargetFeedback.msg"
+  "msg/TrackedTarget.msg"
   DEPENDENCIES std_msgs
 )
 
