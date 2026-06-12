@@ -29,8 +29,8 @@ class TopdownTargetLocalizationMissionNode(Node):
     -> no target: LAND
     -> target: GUIDED_XY_APPROACH -> LOITER_REASSESS -> GIMBAL_TOPDOWN
     -> GUIDED_CORRECTIONS/LOITER -> RTK_LOCALIZE -> RETURN_START -> LAND.
-    Yaw is never commanded; current yaw telemetry is only used to map body-frame XY
-    recommendations into LOCAL_NED coordinates.
+    Yaw is never commanded. The pre-takeoff yaw defines the fixed mission-front
+    direction used to map body-frame XY recommendations into LOCAL_NED coordinates.
     Any safety-critical failure transitions to the configured abort mode.
     """
 
@@ -78,6 +78,7 @@ class TopdownTargetLocalizationMissionNode(Node):
         self.last_gimbal_publish_time = 0.0
         self.total_front_moves = 0
         self.total_topdown_moves = 0
+        self.mission_front_yaw_deg = None
         self.current_state = "INITIALIZING"
 
         self.state_pub = self.create_publisher(String, self.mission_state_topic, 10)
@@ -313,6 +314,9 @@ class TopdownTargetLocalizationMissionNode(Node):
 
         if not self.local_ned.capture_origin("pre_takeoff"):
             self.abort_mission("pre_takeoff_origin_failed", set_abort_mode=False)
+            return
+        if not self.capture_mission_front_yaw():
+            self.abort_mission("pre_takeoff_front_yaw_failed", set_abort_mode=False)
             return
         self.set_state("TAKEOFF")
         if not self.takeoff():
@@ -713,16 +717,31 @@ class TopdownTargetLocalizationMissionNode(Node):
         if current is None:
             self.get_logger().error("LOCAL_NED current offset unavailable.")
             return None
-        if not self.local_ned.yaw_fresh(time.monotonic()):
-            self.get_logger().error("Current yaw telemetry is unavailable for XY conversion.")
+        if self.mission_front_yaw_deg is None:
+            self.get_logger().error("Fixed mission-front yaw is unavailable for XY conversion.")
             return None
-        yaw_deg = self.local_ned.current_yaw_deg
         delta_north_m, delta_east_m = self.local_ned.body_to_local_offset(
             forward_m,
             right_m,
-            yaw_deg,
+            self.mission_front_yaw_deg,
         )
         return current[0] + delta_north_m, current[1] + delta_east_m
+
+    def capture_mission_front_yaw(self):
+        started_at = time.monotonic()
+        while time.monotonic() - started_at < self.local_position_timeout_sec:
+            self.spin_and_drain()
+            if self.local_ned.yaw_fresh(time.monotonic()):
+                self.mission_front_yaw_deg = self.local_ned.current_yaw_deg
+                self.get_logger().warn(
+                    f"Mission front fixed from pre-takeoff yaw: "
+                    f"{self.mission_front_yaw_deg:.1f} deg"
+                )
+                return True
+            time.sleep(0.05)
+
+        self.get_logger().error("Failed to capture pre-takeoff yaw as mission front.")
+        return False
 
     def wait_stable_loiter(self, duration_sec):
         """Wait in LOITER while continuing safety and telemetry checks."""
