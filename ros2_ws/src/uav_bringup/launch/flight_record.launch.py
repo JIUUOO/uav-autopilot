@@ -132,6 +132,9 @@ def generate_launch_description():
             "altitude_m": LaunchConfiguration("altitude_m"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
             "min_gps_fix_type": LaunchConfiguration("min_gps_fix_type"),
+            "require_battery_check": LaunchConfiguration("require_battery_check"),
+            "min_battery_voltage_v": LaunchConfiguration("min_battery_voltage_v"),
+            "battery_check_timeout_sec": LaunchConfiguration("battery_check_timeout_sec"),
             "set_land_speed_params": LaunchConfiguration("set_land_speed_params"),
             "land_speed_cm_s": LaunchConfiguration("land_speed_cm_s"),
             "land_speed_high_cm_s": LaunchConfiguration("land_speed_high_cm_s"),
@@ -175,6 +178,9 @@ def generate_launch_description():
         DeclareLaunchArgument("altitude_m", default_value="3.5"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
         DeclareLaunchArgument("min_gps_fix_type", default_value="5"),
+        DeclareLaunchArgument("require_battery_check", default_value="true"),
+        DeclareLaunchArgument("min_battery_voltage_v", default_value="14.4"),
+        DeclareLaunchArgument("battery_check_timeout_sec", default_value="10.0"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
         DeclareLaunchArgument("land_speed_cm_s", default_value="25.0"),  # Final LAND descent speed near the ground (cm/s)
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),  # Initial, high-altitude LAND descent speed (cm/s)
