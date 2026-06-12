@@ -25,10 +25,12 @@ class TopdownTargetLocalizationMissionNode(Node):
     Detect, approach, center above a VLM-selected target, fix its RTK position, and return.
 
     Flight flow:
-    PREPARE -> TAKEOFF -> INITIAL_PERSON_DETECTION
+    PREPARE -> TAKEOFF -> LOITER_INITIAL_DETECTION
     -> no target: LAND
-    -> target: APPROACH_TARGET -> LOITER -> GIMBAL_TOPDOWN
+    -> target: GUIDED_XY_APPROACH -> LOITER_REASSESS -> GIMBAL_TOPDOWN
     -> GUIDED_CORRECTIONS/LOITER -> RTK_LOCALIZE -> RETURN_START -> LAND.
+    Yaw is never commanded; current yaw telemetry is only used to map body-frame XY
+    recommendations into LOCAL_NED coordinates.
     Any safety-critical failure transitions to the configured abort mode.
     """
 
@@ -63,7 +65,6 @@ class TopdownTargetLocalizationMissionNode(Node):
             yaw_timeout_sec=self.yaw_timeout_sec,
         )
 
-        self.front_yaw_deg_active = None
         self.latest_front_feedback = None
         self.latest_front_feedback_time = 0.0
         self.latest_front_report = None
@@ -118,10 +119,6 @@ class TopdownTargetLocalizationMissionNode(Node):
         self.run_once()
 
     def declare_mission_params(self):
-        # Hold the captured front yaw while detecting and approaching the target.
-        self.declare_parameter("use_current_yaw_as_front", True)
-        self.declare_parameter("front_yaw_deg", 0.0)
-
         # LOCAL_NED reference and shared movement safety.
         self.declare_parameter("origin_sample_count", 5)
         self.declare_parameter("software_radius_m", 10.0)
@@ -139,6 +136,8 @@ class TopdownTargetLocalizationMissionNode(Node):
         self.declare_parameter("front_feedback_timeout_sec", 5.0)
         self.declare_parameter("initial_detection_timeout_sec", 30.0)
         self.declare_parameter("approach_detection_timeout_sec", 30.0)
+        self.declare_parameter("initial_loiter_settle_sec", 3.0)
+        self.declare_parameter("approach_loiter_settle_sec", 2.0)
         self.declare_parameter("front_max_step_m", 0.5)
         self.declare_parameter("front_move_acceptance_m", 0.4)
         self.declare_parameter("front_move_timeout_sec", 10.0)
@@ -184,11 +183,6 @@ class TopdownTargetLocalizationMissionNode(Node):
         self.declare_parameter("mission_state_topic", "/uav/mission/state")
 
     def load_mission_params(self):
-        self.use_current_yaw_as_front = bool(
-            self.get_parameter("use_current_yaw_as_front").value
-        )
-        self.front_yaw_deg = float(self.get_parameter("front_yaw_deg").value)
-
         self.origin_sample_count = max(int(self.get_parameter("origin_sample_count").value), 1)
         self.software_radius_m = float(self.get_parameter("software_radius_m").value)
         self.waypoint_acceptance_m = float(self.get_parameter("waypoint_acceptance_m").value)
@@ -212,6 +206,14 @@ class TopdownTargetLocalizationMissionNode(Node):
         )
         self.approach_detection_timeout_sec = max(
             float(self.get_parameter("approach_detection_timeout_sec").value),
+            0.0,
+        )
+        self.initial_loiter_settle_sec = max(
+            float(self.get_parameter("initial_loiter_settle_sec").value),
+            0.0,
+        )
+        self.approach_loiter_settle_sec = max(
+            float(self.get_parameter("approach_loiter_settle_sec").value),
             0.0,
         )
         self.front_max_step_m = float(self.get_parameter("front_max_step_m").value)
@@ -316,11 +318,12 @@ class TopdownTargetLocalizationMissionNode(Node):
         if not self.takeoff():
             self.abort_mission("takeoff_failed")
             return
-        if not self.capture_front_yaw():
-            self.abort_mission("front_yaw_capture_failed")
+        self.set_state("LOITER_INITIAL_DETECTION")
+        if not self.flight_ops.set_mode("LOITER"):
+            self.abort_mission("initial_loiter_failed")
             return
-        if not self.local_ned.set_yaw(self.front_yaw_deg_active):
-            self.abort_mission("front_yaw_set_failed")
+        if not self.wait_stable_loiter(self.initial_loiter_settle_sec):
+            self.abort_mission("initial_loiter_settle_failed")
             return
 
         self.set_state("INITIAL_PERSON_DETECTION")
@@ -389,8 +392,13 @@ class TopdownTargetLocalizationMissionNode(Node):
                     "Person detected, but no actionable approach movement was produced."
                 )
                 return "FAIL"
-            self.set_state("APPROACH_TARGET")
+            self.set_state("GUIDED_XY_APPROACH")
             if not self.execute_front_feedback_move():
+                return "FAIL"
+            if not self.flight_ops.set_mode("LOITER"):
+                return "FAIL"
+            self.set_state("LOITER_REASSESS")
+            if not self.wait_stable_loiter(self.approach_loiter_settle_sec):
                 return "FAIL"
 
             initial_detection = False
@@ -561,9 +569,11 @@ class TopdownTargetLocalizationMissionNode(Node):
         target_north_m, target_east_m = target
         if not self.target_inside_radius(target_north_m, target_east_m):
             self.get_logger().warn("Skipping front feedback move outside software radius.")
-            return True
+            return False
 
         self.total_front_moves += 1
+        if not self.flight_ops.set_mode("GUIDED"):
+            return False
         moved = self.local_ned.goto_offset(
             f"PERSON_APPROACH_{self.total_front_moves:02d}",
             target_north_m,
@@ -647,22 +657,6 @@ class TopdownTargetLocalizationMissionNode(Node):
             self.flight_ops.set_mode(self.abort_mode)
         self.runtime.finish()
 
-    def capture_front_yaw(self):
-        if not self.use_current_yaw_as_front:
-            self.front_yaw_deg_active = self.local_ned.normalize_angle_deg(
-                self.front_yaw_deg
-            )
-            return True
-
-        started_at = time.monotonic()
-        while time.monotonic() - started_at <= self.local_position_timeout_sec:
-            self.spin_and_drain()
-            if self.local_ned.yaw_fresh(time.monotonic()):
-                self.front_yaw_deg_active = self.local_ned.current_yaw_deg
-                return True
-            time.sleep(0.05)
-        return False
-
     def front_feedback_ready(self, now):
         return (
             self.front_detection_fresh(now)
@@ -719,15 +713,28 @@ class TopdownTargetLocalizationMissionNode(Node):
         if current is None:
             self.get_logger().error("LOCAL_NED current offset unavailable.")
             return None
-        yaw_deg = self.front_yaw_deg_active
-        if self.local_ned.yaw_fresh(time.monotonic()):
-            yaw_deg = self.local_ned.current_yaw_deg
+        if not self.local_ned.yaw_fresh(time.monotonic()):
+            self.get_logger().error("Current yaw telemetry is unavailable for XY conversion.")
+            return None
+        yaw_deg = self.local_ned.current_yaw_deg
         delta_north_m, delta_east_m = self.local_ned.body_to_local_offset(
             forward_m,
             right_m,
             yaw_deg,
         )
         return current[0] + delta_north_m, current[1] + delta_east_m
+
+    def wait_stable_loiter(self, duration_sec):
+        """Wait in LOITER while continuing safety and telemetry checks."""
+
+        started_at = time.monotonic()
+        while time.monotonic() - started_at < duration_sec:
+            now = time.monotonic()
+            self.spin_and_drain()
+            if not self.safety_state_valid(now):
+                return False
+            time.sleep(0.05)
+        return True
 
     def safety_state_valid(self, now):
         if not self.local_ned.local_position_fresh(now):
@@ -804,6 +811,8 @@ class TopdownTargetLocalizationMissionNode(Node):
         self.get_logger().info(
             f"approach_detection_timeout : {self.approach_detection_timeout_sec}"
         )
+        self.get_logger().info(f"initial_loiter_settle_sec  : {self.initial_loiter_settle_sec}")
+        self.get_logger().info(f"approach_loiter_settle_sec : {self.approach_loiter_settle_sec}")
         self.get_logger().info(f"front_max_step_m           : {self.front_max_step_m}")
         self.get_logger().info(f"front_max_total_moves      : {self.front_max_total_moves}")
         self.get_logger().info(f"software_radius_m          : {self.software_radius_m}")

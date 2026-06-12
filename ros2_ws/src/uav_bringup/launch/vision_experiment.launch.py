@@ -269,6 +269,7 @@ def generate_launch_description():
             "port": LaunchConfiguration("mission_port"),
             "dry_run": LaunchConfiguration("dry_run"),
             "altitude_m": LaunchConfiguration("mission_altitude_m"),
+            "altitude_ratio": LaunchConfiguration("mission_altitude_ratio"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
             "require_battery_check": LaunchConfiguration("require_battery_check"),
             "min_battery_voltage_v": LaunchConfiguration("min_battery_voltage_v"),
@@ -329,6 +330,12 @@ def generate_launch_description():
             ),
             "approach_detection_timeout_sec": LaunchConfiguration(
                 "mission_approach_detection_timeout_sec"
+            ),
+            "initial_loiter_settle_sec": LaunchConfiguration(
+                "mission_initial_loiter_settle_sec"
+            ),
+            "approach_loiter_settle_sec": LaunchConfiguration(
+                "mission_approach_loiter_settle_sec"
             ),
             "front_max_step_m": LaunchConfiguration("max_feedback_step_m"),
             "front_move_acceptance_m": LaunchConfiguration("feedback_move_acceptance_m"),
@@ -760,6 +767,7 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_port", default_value=mission_default_port),
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("mission_altitude_m", default_value="3.5"),
+        DeclareLaunchArgument("mission_altitude_ratio", default_value="0.95"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
         DeclareLaunchArgument("require_battery_check", default_value="true"),
         DeclareLaunchArgument("min_battery_voltage_v", default_value="14.4"),
@@ -767,6 +775,8 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_topdown_gimbal_pwm", default_value="0"),
         DeclareLaunchArgument("mission_initial_detection_timeout_sec", default_value="30.0"),
         DeclareLaunchArgument("mission_approach_detection_timeout_sec", default_value="30.0"),
+        DeclareLaunchArgument("mission_initial_loiter_settle_sec", default_value="3.0"),
+        DeclareLaunchArgument("mission_approach_loiter_settle_sec", default_value="2.0"),
         DeclareLaunchArgument("mission_return_gimbal_pwm", default_value="1550"),
         DeclareLaunchArgument("mission_gimbal_command_period_sec", default_value="1.0"),
         DeclareLaunchArgument("mission_topdown_gimbal_settle_sec", default_value="2.0"),
