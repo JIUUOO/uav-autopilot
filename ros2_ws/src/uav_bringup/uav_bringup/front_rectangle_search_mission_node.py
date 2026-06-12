@@ -168,7 +168,9 @@ class FrontRectangleSearchMissionNode(Node):
             return
 
         self.request_search_streams()
-        self.flight_ops = self.runtime.make_flight_ops()
+        self.flight_ops = self.runtime.make_flight_ops(
+            drain_fn=self.local_ned.drain_messages,
+        )
 
         if self.runtime.stop_if_dry_run("Dry-run enabled. Front rectangle movement/arm/takeoff commands not sent."):
             return

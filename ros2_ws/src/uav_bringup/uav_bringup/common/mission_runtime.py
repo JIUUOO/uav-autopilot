@@ -127,12 +127,12 @@ class MissionRuntime:
             rtcm_frames_fn=self.get_rtcm_frames,
         )
 
-    def make_flight_ops(self) -> FlightOps:
+    def make_flight_ops(self, drain_fn=None) -> FlightOps:
         return FlightOps(
             mav_client=self.mav_client,
             logger=self.logger,
             timeout_sec=self.config.timeout_sec,
-            drain_fn=self.drain_mavlink,
+            drain_fn=self.drain_mavlink if drain_fn is None else drain_fn,
         )
 
     def drain_mavlink(self):

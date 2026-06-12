@@ -147,8 +147,8 @@ class TopdownTargetLocalizationMissionNode(Node):
         # Gimbal command is parameterized because the calibrated top-down PWM is unknown.
         self.declare_parameter("gimbal_pitch_target_topic", "/uav/gimbal/pitch_target_pwm")
         self.declare_parameter("gimbal_pwm_min", 1550)
-        self.declare_parameter("gimbal_pwm_max", 1580)
-        self.declare_parameter("topdown_gimbal_pwm", 0)
+        self.declare_parameter("gimbal_pwm_max", 1690)
+        self.declare_parameter("topdown_gimbal_pwm", 1690)
         self.declare_parameter("return_gimbal_pwm", 1550)
         self.declare_parameter("gimbal_command_period_sec", 1.0)
         self.declare_parameter("topdown_gimbal_settle_sec", 2.0)
@@ -305,7 +305,9 @@ class TopdownTargetLocalizationMissionNode(Node):
             return
 
         self.local_ned.request_streams(local_position_hz=10.0, attitude_hz=10.0)
-        self.flight_ops = self.runtime.make_flight_ops()
+        self.flight_ops = self.runtime.make_flight_ops(
+            drain_fn=self.local_ned.drain_messages,
+        )
 
         if self.runtime.stop_if_dry_run(
             "Dry-run enabled. Mission flight and gimbal commands not sent."

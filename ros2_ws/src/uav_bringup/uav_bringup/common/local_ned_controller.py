@@ -252,6 +252,9 @@ class LocalNedController:
 
     def spin_and_drain(self):
         rclpy.spin_once(self.node, timeout_sec=0.0)
+        self.drain_messages()
+
+    def drain_messages(self):
         self.runtime.mav_client.drain_messages(self.process_message)
 
     def process_message(self, msg):
