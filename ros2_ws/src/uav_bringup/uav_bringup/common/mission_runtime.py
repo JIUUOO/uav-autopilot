@@ -55,7 +55,7 @@ class MissionRuntime:
         self.mav_client.connect()
         self.mav_client.request_default_streams(hz=stream_hz, include_flow_rad=include_flow_rad)
 
-        if not self.check_battery_before_mission(stage="initial"):
+        if not self.check_battery_before_mission(stage="startup"):
             return False
 
         if not self.start_ntrip_if_enabled():
@@ -63,9 +63,6 @@ class MissionRuntime:
 
         if not self.wait_readiness():
             self.logger.error("Readiness check failed.")
-            return False
-
-        if not self.check_battery_before_mission(stage="final"):
             return False
 
         return True

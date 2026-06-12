@@ -147,7 +147,7 @@ class TopdownTargetLocalizationMissionNode(Node):
 
         # Gimbal command is parameterized because the calibrated top-down PWM is unknown.
         self.declare_parameter("gimbal_pitch_target_topic", "/uav/gimbal/pitch_target_pwm")
-        self.declare_parameter("gimbal_pwm_min", 1520)
+        self.declare_parameter("gimbal_pwm_min", 1550)
         self.declare_parameter("gimbal_pwm_max", 1580)
         self.declare_parameter("topdown_gimbal_pwm", 0)
         self.declare_parameter("return_gimbal_pwm", 1550)

@@ -28,9 +28,9 @@ class GimbalPitchControllerNode(Node):
         self.declare_parameter("state_topic", "/uav/gimbal/state")
 
         self.declare_parameter("servo_channel", 7)  # Pitch gimbal is wired to Pixhawk PWM OUT 7.
-        self.declare_parameter("pwm_min", 1520)
+        self.declare_parameter("pwm_min", 1550)
         self.declare_parameter("pwm_neutral", 1550)
-        self.declare_parameter("pwm_max", 1580)
+        self.declare_parameter("pwm_max", 1690)
         self.declare_parameter("invert_pwm", False)
 
         self.declare_parameter("command_hz", 5.0)

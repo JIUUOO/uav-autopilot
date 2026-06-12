@@ -56,7 +56,7 @@ def declare_guided_takeoff_params(
     node.declare_parameter("ntrip_user", os.getenv("NTRIP_USER", ""))
     node.declare_parameter("ntrip_pass", os.getenv("NTRIP_PASS", "gnss"))
 
-    node.declare_parameter("min_gps_fix_type", 5)
+    node.declare_parameter("min_gps_fix_type", 4)
     node.declare_parameter("max_hacc_m", 5.0)  # ready check fails when hacc_m > max_hacc_m
 
     node.declare_parameter("require_optical_flow", True)

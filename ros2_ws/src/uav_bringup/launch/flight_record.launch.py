@@ -177,7 +177,7 @@ def generate_launch_description():
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("altitude_m", default_value="3.5"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
-        DeclareLaunchArgument("min_gps_fix_type", default_value="5"),
+        DeclareLaunchArgument("min_gps_fix_type", default_value="4"),
         DeclareLaunchArgument("require_battery_check", default_value="true"),
         DeclareLaunchArgument("min_battery_voltage_v", default_value="14.4"),
         DeclareLaunchArgument("battery_check_timeout_sec", default_value="10.0"),
