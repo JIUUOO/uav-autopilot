@@ -324,7 +324,12 @@ def generate_launch_description():
             "front_feedback_topic": LaunchConfiguration("target_feedback_topic"),
             "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
             "front_feedback_timeout_sec": LaunchConfiguration("target_feedback_timeout_sec"),
-            "search_feedback_wait_sec": LaunchConfiguration("mission_search_feedback_wait_sec"),
+            "initial_detection_timeout_sec": LaunchConfiguration(
+                "mission_initial_detection_timeout_sec"
+            ),
+            "approach_detection_timeout_sec": LaunchConfiguration(
+                "mission_approach_detection_timeout_sec"
+            ),
             "front_max_step_m": LaunchConfiguration("max_feedback_step_m"),
             "front_move_acceptance_m": LaunchConfiguration("feedback_move_acceptance_m"),
             "front_move_timeout_sec": LaunchConfiguration("feedback_move_timeout_sec"),
@@ -346,8 +351,8 @@ def generate_launch_description():
             "request_fresh_detection_after_topdown": LaunchConfiguration(
                 "mission_request_fresh_detection_after_topdown"
             ),
-            "request_fresh_detection_during_search": LaunchConfiguration(
-                "mission_request_fresh_detection_during_search"
+            "request_fresh_detection_after_approach": LaunchConfiguration(
+                "mission_request_fresh_detection_after_approach"
             ),
             "topdown_feedback_topic": LaunchConfiguration(
                 "topdown_centering_feedback_topic"
@@ -760,7 +765,8 @@ def generate_launch_description():
         DeclareLaunchArgument("min_battery_voltage_v", default_value="14.4"),
         DeclareLaunchArgument("battery_check_timeout_sec", default_value="10.0"),
         DeclareLaunchArgument("mission_topdown_gimbal_pwm", default_value="0"),
-        DeclareLaunchArgument("mission_search_feedback_wait_sec", default_value="10.0"),
+        DeclareLaunchArgument("mission_initial_detection_timeout_sec", default_value="30.0"),
+        DeclareLaunchArgument("mission_approach_detection_timeout_sec", default_value="30.0"),
         DeclareLaunchArgument("mission_return_gimbal_pwm", default_value="1550"),
         DeclareLaunchArgument("mission_gimbal_command_period_sec", default_value="1.0"),
         DeclareLaunchArgument("mission_topdown_gimbal_settle_sec", default_value="2.0"),
@@ -769,7 +775,7 @@ def generate_launch_description():
             default_value="true",
         ),
         DeclareLaunchArgument(
-            "mission_request_fresh_detection_during_search",
+            "mission_request_fresh_detection_after_approach",
             default_value="true",
         ),
         DeclareLaunchArgument("mission_topdown_feedback_timeout_sec", default_value="2.0"),
@@ -787,7 +793,7 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_topdown_move_cooldown_sec", default_value="1.0"),
         DeclareLaunchArgument("mission_topdown_max_moves", default_value="20"),
         DeclareLaunchArgument("mission_target_estimate_timeout_sec", default_value="8.0"),
-        DeclareLaunchArgument("mission_completion_mode", default_value="LOITER"),
+        DeclareLaunchArgument("mission_completion_mode", default_value="LAND"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
         DeclareLaunchArgument("land_speed_cm_s", default_value="30.0"),
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),
