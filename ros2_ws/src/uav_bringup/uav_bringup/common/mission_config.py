@@ -24,6 +24,9 @@ class GuidedTakeoffMissionConfig:
     max_hacc_m: float
     require_optical_flow: bool
     optical_flow_timeout_sec: float
+    require_battery_check: bool
+    min_battery_voltage_v: float
+    battery_check_timeout_sec: float
     land_after_hold: bool = False
 
 
@@ -53,11 +56,14 @@ def declare_guided_takeoff_params(
     node.declare_parameter("ntrip_user", os.getenv("NTRIP_USER", ""))
     node.declare_parameter("ntrip_pass", os.getenv("NTRIP_PASS", "gnss"))
 
-    node.declare_parameter("min_gps_fix_type", 5)
+    node.declare_parameter("min_gps_fix_type", 4)
     node.declare_parameter("max_hacc_m", 5.0)  # ready check fails when hacc_m > max_hacc_m
 
     node.declare_parameter("require_optical_flow", True)
     node.declare_parameter("optical_flow_timeout_sec", 3.0)  # flow is ready only if recent flow messages exist
+    node.declare_parameter("require_battery_check", True)
+    node.declare_parameter("min_battery_voltage_v", 14.4)
+    node.declare_parameter("battery_check_timeout_sec", 10.0)
 
 
 def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> GuidedTakeoffMissionConfig:
@@ -84,5 +90,10 @@ def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> G
         max_hacc_m=float(node.get_parameter("max_hacc_m").value),
         require_optical_flow=bool(node.get_parameter("require_optical_flow").value),
         optical_flow_timeout_sec=float(node.get_parameter("optical_flow_timeout_sec").value),
+        require_battery_check=bool(node.get_parameter("require_battery_check").value),
+        min_battery_voltage_v=float(node.get_parameter("min_battery_voltage_v").value),
+        battery_check_timeout_sec=float(
+            node.get_parameter("battery_check_timeout_sec").value
+        ),
         land_after_hold=land_after_hold,
     )

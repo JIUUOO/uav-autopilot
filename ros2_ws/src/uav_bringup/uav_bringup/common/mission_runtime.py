@@ -44,6 +44,9 @@ class MissionRuntime:
         self.logger.info(f"min_gps_fix_type     : {self.config.min_gps_fix_type}")
         self.logger.info(f"max_hacc_m           : {self.config.max_hacc_m}")
         self.logger.info(f"require_optical_flow : {self.config.require_optical_flow}")
+        self.logger.info(f"require_battery_check: {self.config.require_battery_check}")
+        self.logger.info(f"min_battery_voltage_v: {self.config.min_battery_voltage_v}")
+        self.logger.info(f"battery_check_timeout : {self.config.battery_check_timeout_sec}")
         self.logger.info(f"loiter_hold_sec      : {self.config.loiter_hold_sec}")
         if include_land_after_hold:
             self.logger.info(f"land_after_hold      : {self.config.land_after_hold}")
@@ -52,6 +55,9 @@ class MissionRuntime:
         self.mav_client.connect()
         self.mav_client.request_default_streams(hz=stream_hz, include_flow_rad=include_flow_rad)
 
+        if not self.check_battery_before_mission(stage="startup"):
+            return False
+
         if not self.start_ntrip_if_enabled():
             return False
 
@@ -59,6 +65,37 @@ class MissionRuntime:
             self.logger.error("Readiness check failed.")
             return False
 
+        return True
+
+    def check_battery_before_mission(self, stage: str = "preflight") -> bool:
+        """Block the mission before NTRIP/arm/takeoff when battery voltage is unsafe."""
+
+        if not self.config.require_battery_check:
+            self.logger.warn("Preflight battery check disabled.")
+            return True
+
+        self.logger.warn(
+            f"Waiting for {stage} battery voltage: "
+            f"must be > {self.config.min_battery_voltage_v:.2f} V"
+        )
+        voltage_v = self.mav_client.wait_battery_voltage(
+            timeout_sec=self.config.battery_check_timeout_sec
+        )
+        if voltage_v is None:
+            self.logger.error(
+                f"MISSION BLOCKED ({stage}): no valid SYS_STATUS battery voltage received "
+                f"within {self.config.battery_check_timeout_sec:.1f}s."
+            )
+            return False
+
+        if voltage_v <= self.config.min_battery_voltage_v:
+            self.logger.error(
+                f"MISSION BLOCKED ({stage}): battery voltage "
+                f"{voltage_v:.2f} V <= {self.config.min_battery_voltage_v:.2f} V."
+            )
+            return False
+
+        self.logger.warn(f"Battery OK ({stage}): {voltage_v:.2f} V")
         return True
 
     def start_ntrip_if_enabled(self) -> bool:
@@ -90,12 +127,12 @@ class MissionRuntime:
             rtcm_frames_fn=self.get_rtcm_frames,
         )
 
-    def make_flight_ops(self) -> FlightOps:
+    def make_flight_ops(self, drain_fn=None) -> FlightOps:
         return FlightOps(
             mav_client=self.mav_client,
             logger=self.logger,
             timeout_sec=self.config.timeout_sec,
-            drain_fn=self.drain_mavlink,
+            drain_fn=self.drain_mavlink if drain_fn is None else drain_fn,
         )
 
     def drain_mavlink(self):

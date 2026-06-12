@@ -77,6 +77,7 @@ def _make_gemini_node(context, *_args, **_kwargs):
                 "trigger_topic": LaunchConfiguration("gemini_trigger_topic"),
                 "max_calls": LaunchConfiguration("gemini_max_calls"),
                 "prompt_version": LaunchConfiguration("gemini_prompt_version"),
+                "target_query": LaunchConfiguration("gemini_target_query"),
                 "max_width": LaunchConfiguration("gemini_max_width"),
                 "jpeg_quality": LaunchConfiguration("gemini_jpeg_quality"),
                 "save_reports": LaunchConfiguration("save_gemini_reports"),
@@ -131,7 +132,11 @@ def generate_launch_description():
     gemini_trigger_topic = "/uav/vision/analyze_trigger"
     frame_selection_trigger_topic = "/uav/vision/select_frame_trigger"
     candidate_tracks_topic = "/uav/vision/candidate_tracks"
+    tracked_target_topic = "/uav/vision/tracked_target"
+    topdown_centering_feedback_topic = "/uav/vision/topdown_centering_feedback"
+    target_position_estimate_topic = "/uav/vision/target_position_estimate"
     target_feedback_topic = "/uav/vision/target_feedback"
+    mission_state_topic = "/uav/mission/state"
     person_position_estimate_topic = "/uav/vision/person_position_estimate"
     gimbal_pitch_target_topic = "/uav/gimbal/pitch_target_pwm"
     gimbal_state_topic = "/uav/gimbal/state"
@@ -151,7 +156,11 @@ def generate_launch_description():
         gemini_trigger_topic,
         frame_selection_trigger_topic,
         candidate_tracks_topic,
+        tracked_target_topic,
+        topdown_centering_feedback_topic,
+        target_position_estimate_topic,
         target_feedback_topic,
+        mission_state_topic,
         person_position_estimate_topic,
         gimbal_pitch_target_topic,
         gimbal_state_topic,
@@ -260,7 +269,11 @@ def generate_launch_description():
             "port": LaunchConfiguration("mission_port"),
             "dry_run": LaunchConfiguration("dry_run"),
             "altitude_m": LaunchConfiguration("mission_altitude_m"),
+            "altitude_ratio": LaunchConfiguration("mission_altitude_ratio"),
             "loiter_hold_sec": LaunchConfiguration("loiter_hold_sec"),
+            "require_battery_check": LaunchConfiguration("require_battery_check"),
+            "min_battery_voltage_v": LaunchConfiguration("min_battery_voltage_v"),
+            "battery_check_timeout_sec": LaunchConfiguration("battery_check_timeout_sec"),
             "set_land_speed_params": LaunchConfiguration("set_land_speed_params"),
             "land_speed_cm_s": LaunchConfiguration("land_speed_cm_s"),
             "land_speed_high_cm_s": LaunchConfiguration("land_speed_high_cm_s"),
@@ -309,7 +322,79 @@ def generate_launch_description():
             "feedback_move_cooldown_sec": LaunchConfiguration("feedback_move_cooldown_sec"),
             "max_feedback_moves_per_waypoint": LaunchConfiguration("max_feedback_moves_per_waypoint"),
             "max_total_feedback_moves": LaunchConfiguration("max_total_feedback_moves"),
+            "front_feedback_topic": LaunchConfiguration("target_feedback_topic"),
             "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "front_feedback_timeout_sec": LaunchConfiguration("target_feedback_timeout_sec"),
+            "initial_detection_timeout_sec": LaunchConfiguration(
+                "mission_initial_detection_timeout_sec"
+            ),
+            "approach_detection_timeout_sec": LaunchConfiguration(
+                "mission_approach_detection_timeout_sec"
+            ),
+            "initial_loiter_settle_sec": LaunchConfiguration(
+                "mission_initial_loiter_settle_sec"
+            ),
+            "approach_loiter_settle_sec": LaunchConfiguration(
+                "mission_approach_loiter_settle_sec"
+            ),
+            "front_max_step_m": LaunchConfiguration("max_feedback_step_m"),
+            "front_move_acceptance_m": LaunchConfiguration("feedback_move_acceptance_m"),
+            "front_move_timeout_sec": LaunchConfiguration("feedback_move_timeout_sec"),
+            "front_max_total_moves": LaunchConfiguration("max_total_feedback_moves"),
+            "gimbal_pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
+            "gimbal_pwm_min": LaunchConfiguration("gimbal_pwm_min"),
+            "gimbal_pwm_max": LaunchConfiguration("gimbal_pwm_max"),
+            "topdown_gimbal_pwm": LaunchConfiguration("mission_topdown_gimbal_pwm"),
+            "return_gimbal_pwm": LaunchConfiguration("mission_return_gimbal_pwm"),
+            "gimbal_command_period_sec": LaunchConfiguration(
+                "mission_gimbal_command_period_sec"
+            ),
+            "topdown_gimbal_settle_sec": LaunchConfiguration(
+                "mission_topdown_gimbal_settle_sec"
+            ),
+            "frame_selection_trigger_topic": LaunchConfiguration(
+                "frame_selection_trigger_topic"
+            ),
+            "request_fresh_detection_after_topdown": LaunchConfiguration(
+                "mission_request_fresh_detection_after_topdown"
+            ),
+            "request_fresh_detection_after_approach": LaunchConfiguration(
+                "mission_request_fresh_detection_after_approach"
+            ),
+            "topdown_feedback_topic": LaunchConfiguration(
+                "topdown_centering_feedback_topic"
+            ),
+            "target_estimate_topic": LaunchConfiguration(
+                "target_position_estimate_topic"
+            ),
+            "topdown_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_feedback_timeout_sec"
+            ),
+            "topdown_initial_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_initial_feedback_timeout_sec"
+            ),
+            "topdown_post_move_feedback_timeout_sec": LaunchConfiguration(
+                "mission_topdown_post_move_feedback_timeout_sec"
+            ),
+            "topdown_total_timeout_sec": LaunchConfiguration(
+                "mission_topdown_total_timeout_sec"
+            ),
+            "topdown_max_step_m": LaunchConfiguration("topdown_max_step_m"),
+            "topdown_move_acceptance_m": LaunchConfiguration(
+                "mission_topdown_move_acceptance_m"
+            ),
+            "topdown_move_timeout_sec": LaunchConfiguration(
+                "mission_topdown_move_timeout_sec"
+            ),
+            "topdown_move_cooldown_sec": LaunchConfiguration(
+                "mission_topdown_move_cooldown_sec"
+            ),
+            "topdown_max_moves": LaunchConfiguration("mission_topdown_max_moves"),
+            "target_estimate_timeout_sec": LaunchConfiguration(
+                "mission_target_estimate_timeout_sec"
+            ),
+            "mission_state_topic": LaunchConfiguration("mission_state_topic"),
+            "completion_mode": LaunchConfiguration("mission_completion_mode"),
             "enable_low_altitude_inspection": LaunchConfiguration("enable_low_altitude_inspection"),
             "inspect_altitude_m": LaunchConfiguration("inspect_altitude_m"),
             "min_safe_altitude_m": LaunchConfiguration("min_safe_altitude_m"),
@@ -345,7 +430,6 @@ def generate_launch_description():
         parameters=[{
             "dry_run": LaunchConfiguration("gimbal_dry_run"),
             "command_service": LaunchConfiguration("gimbal_command_service"),
-            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
             "pitch_target_topic": LaunchConfiguration("gimbal_pitch_target_topic"),
             "state_topic": LaunchConfiguration("gimbal_state_topic"),
             "servo_channel": LaunchConfiguration("gimbal_servo_channel"),
@@ -353,13 +437,10 @@ def generate_launch_description():
             "pwm_neutral": LaunchConfiguration("gimbal_pwm_neutral"),
             "pwm_max": LaunchConfiguration("gimbal_pwm_max"),
             "invert_pwm": LaunchConfiguration("gimbal_invert_pwm"),
-            "preset_far_pwm": LaunchConfiguration("gimbal_preset_far_pwm"),
-            "preset_near_pwm": LaunchConfiguration("gimbal_preset_near_pwm"),
             "command_hz": LaunchConfiguration("gimbal_command_hz"),
             "max_rate_pwm_s": LaunchConfiguration("gimbal_max_rate_pwm_s"),
             "command_timeout_sec": LaunchConfiguration("gimbal_command_timeout_sec"),
             "timeout_to_neutral": LaunchConfiguration("gimbal_timeout_to_neutral"),
-            "confidence_threshold": LaunchConfiguration("gimbal_confidence_threshold"),
         }],
     )
 
@@ -400,6 +481,87 @@ def generate_launch_description():
             "match_center_distance": LaunchConfiguration("candidate_match_center_distance"),
             "max_track_age_sec": LaunchConfiguration("candidate_max_track_age_sec"),
             "publish_empty": LaunchConfiguration("candidate_publish_empty"),
+        }],
+    )
+
+    target_tracker_node = Node(
+        package="uav_vision",
+        executable="target_tracker",
+        name="target_tracker",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_target_tracker")),
+        parameters=[{
+            "image_topic": LaunchConfiguration("raw_image_topic"),
+            "gemini_report_topic": LaunchConfiguration("gemini_report_topic"),
+            "tracked_target_topic": LaunchConfiguration("tracked_target_topic"),
+            "tracker_type": LaunchConfiguration("target_tracker_type"),
+            "min_detection_confidence": LaunchConfiguration(
+                "target_tracker_min_detection_confidence"
+            ),
+            "max_buffer_frames": LaunchConfiguration("target_tracker_max_buffer_frames"),
+            "max_replay_frames": LaunchConfiguration("target_tracker_max_replay_frames"),
+            "stamp_tolerance_sec": LaunchConfiguration(
+                "target_tracker_stamp_tolerance_sec"
+            ),
+            "max_consecutive_failures": LaunchConfiguration(
+                "target_tracker_max_consecutive_failures"
+            ),
+        }],
+    )
+
+    topdown_centering_feedback_node = Node(
+        package="uav_vision",
+        executable="topdown_centering_feedback",
+        name="topdown_centering_feedback",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_topdown_centering_feedback")),
+        parameters=[{
+            "tracked_target_topic": LaunchConfiguration("tracked_target_topic"),
+            "feedback_topic": LaunchConfiguration("topdown_centering_feedback_topic"),
+            "target_center_x_norm": LaunchConfiguration("topdown_target_center_x_norm"),
+            "target_center_y_norm": LaunchConfiguration("topdown_target_center_y_norm"),
+            "center_tolerance_x_norm": LaunchConfiguration(
+                "topdown_center_tolerance_x_norm"
+            ),
+            "center_tolerance_y_norm": LaunchConfiguration(
+                "topdown_center_tolerance_y_norm"
+            ),
+            "body_forward_gain_m": LaunchConfiguration("topdown_body_forward_gain_m"),
+            "body_right_gain_m": LaunchConfiguration("topdown_body_right_gain_m"),
+            "body_forward_sign": LaunchConfiguration("topdown_body_forward_sign"),
+            "body_right_sign": LaunchConfiguration("topdown_body_right_sign"),
+            "swap_image_axes": LaunchConfiguration("topdown_swap_image_axes"),
+            "max_step_m": LaunchConfiguration("topdown_max_step_m"),
+            "min_step_m": LaunchConfiguration("topdown_min_step_m"),
+            "required_centered_frames": LaunchConfiguration(
+                "topdown_required_centered_frames"
+            ),
+            "required_centered_sec": LaunchConfiguration("topdown_required_centered_sec"),
+        }],
+    )
+
+    topdown_rtk_localizer_node = Node(
+        package="uav_vision",
+        executable="topdown_rtk_localizer",
+        name="topdown_rtk_localizer",
+        output="screen",
+        condition=IfCondition(LaunchConfiguration("enable_topdown_rtk_localizer")),
+        parameters=[{
+            "centering_feedback_topic": LaunchConfiguration(
+                "topdown_centering_feedback_topic"
+            ),
+            "gps_topic": LaunchConfiguration("topdown_rtk_gps_topic"),
+            "estimate_topic": LaunchConfiguration("target_position_estimate_topic"),
+            "sample_count": LaunchConfiguration("topdown_rtk_sample_count"),
+            "sampling_timeout_sec": LaunchConfiguration(
+                "topdown_rtk_sampling_timeout_sec"
+            ),
+            "max_horizontal_stddev_m": LaunchConfiguration(
+                "topdown_rtk_max_horizontal_stddev_m"
+            ),
+            "require_known_covariance": LaunchConfiguration(
+                "topdown_rtk_require_known_covariance"
+            ),
         }],
     )
 
@@ -467,6 +629,9 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_selector", default_value="true"),
         DeclareLaunchArgument("enable_gemini", default_value="true"),
         DeclareLaunchArgument("enable_candidate_manager", default_value="false"),
+        DeclareLaunchArgument("enable_target_tracker", default_value="false"),
+        DeclareLaunchArgument("enable_topdown_centering_feedback", default_value="false"),
+        DeclareLaunchArgument("enable_topdown_rtk_localizer", default_value="false"),
         DeclareLaunchArgument("enable_target_feedback", default_value="false"),
         DeclareLaunchArgument("enable_person_position_estimator", default_value="false"),
         DeclareLaunchArgument("enable_gimbal", default_value="false"),
@@ -495,7 +660,8 @@ def generate_launch_description():
         DeclareLaunchArgument("gemini_analysis_mode", default_value="auto"),
         DeclareLaunchArgument("gemini_period_sec", default_value="5.0"),
         DeclareLaunchArgument("gemini_max_calls", default_value="0"),
-        DeclareLaunchArgument("gemini_prompt_version", default_value="person_bbox_v1"),
+        DeclareLaunchArgument("gemini_prompt_version", default_value="target_bbox_v1"),
+        DeclareLaunchArgument("gemini_target_query", default_value="person"),
         DeclareLaunchArgument("gemini_max_width", default_value="640"),
         DeclareLaunchArgument("gemini_jpeg_quality", default_value="70"),
         DeclareLaunchArgument("save_gemini_reports", default_value="true"),
@@ -508,6 +674,42 @@ def generate_launch_description():
         DeclareLaunchArgument("candidate_match_center_distance", default_value="0.15"),
         DeclareLaunchArgument("candidate_max_track_age_sec", default_value="30.0"),
         DeclareLaunchArgument("candidate_publish_empty", default_value="true"),
+        DeclareLaunchArgument("tracked_target_topic", default_value=tracked_target_topic),
+        DeclareLaunchArgument("target_tracker_type", default_value="AUTO"),
+        DeclareLaunchArgument("target_tracker_min_detection_confidence", default_value="0.50"),
+        DeclareLaunchArgument("target_tracker_max_buffer_frames", default_value="300"),
+        DeclareLaunchArgument("target_tracker_max_replay_frames", default_value="60"),
+        DeclareLaunchArgument("target_tracker_stamp_tolerance_sec", default_value="0.05"),
+        DeclareLaunchArgument("target_tracker_max_consecutive_failures", default_value="5"),
+        DeclareLaunchArgument(
+            "topdown_centering_feedback_topic",
+            default_value=topdown_centering_feedback_topic,
+        ),
+        DeclareLaunchArgument("topdown_target_center_x_norm", default_value="0.50"),
+        DeclareLaunchArgument("topdown_target_center_y_norm", default_value="0.50"),
+        DeclareLaunchArgument("topdown_center_tolerance_x_norm", default_value="0.06"),
+        DeclareLaunchArgument("topdown_center_tolerance_y_norm", default_value="0.06"),
+        DeclareLaunchArgument("topdown_body_forward_gain_m", default_value="2.0"),
+        DeclareLaunchArgument("topdown_body_right_gain_m", default_value="2.0"),
+        DeclareLaunchArgument("topdown_body_forward_sign", default_value="-1.0"),
+        DeclareLaunchArgument("topdown_body_right_sign", default_value="1.0"),
+        DeclareLaunchArgument("topdown_swap_image_axes", default_value="false"),
+        DeclareLaunchArgument("topdown_max_step_m", default_value="0.30"),
+        DeclareLaunchArgument("topdown_min_step_m", default_value="0.05"),
+        DeclareLaunchArgument("topdown_required_centered_frames", default_value="10"),
+        DeclareLaunchArgument("topdown_required_centered_sec", default_value="1.0"),
+        DeclareLaunchArgument(
+            "target_position_estimate_topic",
+            default_value=target_position_estimate_topic,
+        ),
+        DeclareLaunchArgument(
+            "topdown_rtk_gps_topic",
+            default_value="/mavros/global_position/global",
+        ),
+        DeclareLaunchArgument("topdown_rtk_sample_count", default_value="5"),
+        DeclareLaunchArgument("topdown_rtk_sampling_timeout_sec", default_value="3.0"),
+        DeclareLaunchArgument("topdown_rtk_max_horizontal_stddev_m", default_value="1.0"),
+        DeclareLaunchArgument("topdown_rtk_require_known_covariance", default_value="true"),
         DeclareLaunchArgument("target_feedback_topic", default_value=target_feedback_topic),
         DeclareLaunchArgument("feedback_min_priority_score", default_value="0.50"),
         DeclareLaunchArgument("feedback_center_x_min", default_value="0.40"),
@@ -539,17 +741,16 @@ def generate_launch_description():
         DeclareLaunchArgument("gimbal_pitch_target_topic", default_value=gimbal_pitch_target_topic),
         DeclareLaunchArgument("gimbal_state_topic", default_value=gimbal_state_topic),
         DeclareLaunchArgument("gimbal_servo_channel", default_value="7"),
-        DeclareLaunchArgument("gimbal_pwm_min", default_value="1520"),
+        DeclareLaunchArgument("gimbal_pwm_min", default_value="1550"),
         DeclareLaunchArgument("gimbal_pwm_neutral", default_value="1550"),
-        DeclareLaunchArgument("gimbal_pwm_max", default_value="1580"),
+        DeclareLaunchArgument("gimbal_pwm_max", default_value="1690"),
         DeclareLaunchArgument("gimbal_invert_pwm", default_value="false"),
-        DeclareLaunchArgument("gimbal_preset_far_pwm", default_value="1520"),
+        DeclareLaunchArgument("gimbal_preset_far_pwm", default_value="1550"),
         DeclareLaunchArgument("gimbal_preset_near_pwm", default_value="1580"),
         DeclareLaunchArgument("gimbal_command_hz", default_value="5.0"),
         DeclareLaunchArgument("gimbal_max_rate_pwm_s", default_value="100.0"),
         DeclareLaunchArgument("gimbal_command_timeout_sec", default_value="10.0"),
         DeclareLaunchArgument("gimbal_timeout_to_neutral", default_value="true"),
-        DeclareLaunchArgument("gimbal_confidence_threshold", default_value="0.75"),
         DeclareLaunchArgument("gimbal_scan_sequence", default_value="PRESET_FAR,PRESET_NEAR"),
         DeclareLaunchArgument("gimbal_scan_capture_mode", default_value="selector_event"),
         DeclareLaunchArgument("gimbal_scan_settle_sec", default_value="1.0"),
@@ -561,10 +762,47 @@ def generate_launch_description():
         DeclareLaunchArgument("mission_package", default_value="uav_bringup"),
         DeclareLaunchArgument("mission_executable", default_value="guided_takeoff_loiter"),
         DeclareLaunchArgument("mission_node_name", default_value="mission_node"),
+        DeclareLaunchArgument("mission_state_topic", default_value=mission_state_topic),
         DeclareLaunchArgument("mission_port", default_value=mission_default_port),
         DeclareLaunchArgument("dry_run", default_value="true"),
         DeclareLaunchArgument("mission_altitude_m", default_value="3.5"),
+        DeclareLaunchArgument("mission_altitude_ratio", default_value="0.95"),
         DeclareLaunchArgument("loiter_hold_sec", default_value="0.0"),
+        DeclareLaunchArgument("require_battery_check", default_value="true"),
+        DeclareLaunchArgument("min_battery_voltage_v", default_value="14.4"),
+        DeclareLaunchArgument("battery_check_timeout_sec", default_value="10.0"),
+        DeclareLaunchArgument("mission_topdown_gimbal_pwm", default_value="1690"),
+        DeclareLaunchArgument("mission_initial_detection_timeout_sec", default_value="30.0"),
+        DeclareLaunchArgument("mission_approach_detection_timeout_sec", default_value="30.0"),
+        DeclareLaunchArgument("mission_initial_loiter_settle_sec", default_value="3.0"),
+        DeclareLaunchArgument("mission_approach_loiter_settle_sec", default_value="2.0"),
+        DeclareLaunchArgument("mission_return_gimbal_pwm", default_value="1550"),
+        DeclareLaunchArgument("mission_gimbal_command_period_sec", default_value="1.0"),
+        DeclareLaunchArgument("mission_topdown_gimbal_settle_sec", default_value="2.0"),
+        DeclareLaunchArgument(
+            "mission_request_fresh_detection_after_topdown",
+            default_value="true",
+        ),
+        DeclareLaunchArgument(
+            "mission_request_fresh_detection_after_approach",
+            default_value="true",
+        ),
+        DeclareLaunchArgument("mission_topdown_feedback_timeout_sec", default_value="2.0"),
+        DeclareLaunchArgument(
+            "mission_topdown_initial_feedback_timeout_sec",
+            default_value="30.0",
+        ),
+        DeclareLaunchArgument(
+            "mission_topdown_post_move_feedback_timeout_sec",
+            default_value="5.0",
+        ),
+        DeclareLaunchArgument("mission_topdown_total_timeout_sec", default_value="90.0"),
+        DeclareLaunchArgument("mission_topdown_move_acceptance_m", default_value="0.25"),
+        DeclareLaunchArgument("mission_topdown_move_timeout_sec", default_value="10.0"),
+        DeclareLaunchArgument("mission_topdown_move_cooldown_sec", default_value="1.0"),
+        DeclareLaunchArgument("mission_topdown_max_moves", default_value="20"),
+        DeclareLaunchArgument("mission_target_estimate_timeout_sec", default_value="8.0"),
+        DeclareLaunchArgument("mission_completion_mode", default_value="LAND"),
         DeclareLaunchArgument("set_land_speed_params", default_value="true"),
         DeclareLaunchArgument("land_speed_cm_s", default_value="30.0"),
         DeclareLaunchArgument("land_speed_high_cm_s", default_value="30.0"),
@@ -640,6 +878,9 @@ def generate_launch_description():
         gimbal_node,
         gimbal_scan_node,
         candidate_manager_node,
+        target_tracker_node,
+        topdown_centering_feedback_node,
+        topdown_rtk_localizer_node,
         target_feedback_node,
         person_position_estimator_node,
         OpaqueFunction(function=_make_gemini_node),

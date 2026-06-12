@@ -1,19 +1,21 @@
 """Versioned Gemini prompts used by vision analyzer nodes."""
 
 
-PERSON_BBOX_V1 = """
-You are analyzing an image from a UAV front camera.
+TARGET_BBOX_V1 = """
+You are analyzing an image from a UAV camera.
+Find only the requested target: TARGET_QUERY.
 
 Return JSON only.
 
 Schema:
 {
   "scene_summary": "short description",
-  "person_detected": false,
+  "target_detected": false,
   "primary_candidate_index": -1,
-  "person_candidates": [
+  "target_candidates": [
     {
       "candidate_index": 0,
+      "target_label": "specific visible target label",
       "confidence": 0.0,
       "bbox_norm": {
         "x_min": 0.0,
@@ -26,22 +28,23 @@ Schema:
   ]
 }
 
-Be conservative. If no person is clearly visible, return person_detected=false and an empty person_candidates list.
-Return one person_candidates entry per visible person using normalized bbox coordinates.
-Choose one primary candidate for inspection, or -1 if no person is detected.
+Be conservative. If the requested target is not clearly visible, return target_detected=false and an empty target_candidates list.
+Return one target_candidates entry per visible match using normalized bbox coordinates.
+Set every target_label exactly to the requested target text: TARGET_QUERY.
+Choose one primary candidate for inspection, or -1 if no matching target is detected.
 The distance bucket is only a visual near/far estimate for closed-loop feedback, not a metric distance.
 Do not output flight, movement, or gimbal actuator commands.
 """
 
 
-DEFAULT_PROMPT_VERSION = "person_bbox_v1"
+DEFAULT_PROMPT_VERSION = "target_bbox_v1"
 
 PROMPTS = {
-    DEFAULT_PROMPT_VERSION: PERSON_BBOX_V1,
+    DEFAULT_PROMPT_VERSION: TARGET_BBOX_V1,
 }
 
 
-def get_prompt(prompt_version):
+def get_prompt(prompt_version, target_query="person"):
     """Return the selected prompt text and resolved version name."""
 
     version = str(prompt_version).strip() or DEFAULT_PROMPT_VERSION
@@ -50,4 +53,5 @@ def get_prompt(prompt_version):
             f"Unknown Gemini prompt version '{version}'. "
             f"Available versions: {', '.join(sorted(PROMPTS))}"
         )
-    return PROMPTS[version], version
+    query = str(target_query).strip() or "person"
+    return PROMPTS[version].replace("TARGET_QUERY", query), version

@@ -50,6 +50,7 @@ class MavlinkClient:
 
     def request_default_streams(self, hz: float = 5.0, include_flow_rad: bool = True):
         msg_ids = [
+            mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS,
             mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT,
             mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
             mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW,
@@ -62,6 +63,23 @@ class MavlinkClient:
 
         for msg_id in msg_ids:
             self.request_message_interval(msg_id, hz)
+
+    def wait_battery_voltage(self, timeout_sec: float):
+        """Return the first valid SYS_STATUS battery voltage in volts, or None."""
+
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            msg = self.master.recv_match(type="SYS_STATUS", blocking=True, timeout=1.0)
+            if msg is None:
+                continue
+
+            voltage_mv = getattr(msg, "voltage_battery", None)
+            if voltage_mv is None or voltage_mv <= 0 or voltage_mv >= 65535:
+                continue
+
+            return float(voltage_mv) / 1000.0
+
+        return None
 
     def command_long_send(self, *args):
         with self.send_lock:

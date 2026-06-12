@@ -81,6 +81,7 @@ class TargetFeedbackNode(Node):
         feedback.header = tracks_msg.header
         feedback.has_target = True
         feedback.track_id = int(track.track_id)
+        feedback.target_label = track.target_label
         feedback.priority_score = float(track.priority_score)
         feedback.center_x_norm = float(track.center_x_norm)
         feedback.center_y_norm = float(track.center_y_norm)

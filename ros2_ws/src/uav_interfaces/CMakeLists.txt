@@ -11,9 +11,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FrameQuality.msg"
   "msg/GeminiReport.msg"
   "msg/GimbalState.msg"
-  "msg/PersonCandidate.msg"
   "msg/PersonPositionEstimate.msg"
+  "msg/TargetCandidate.msg"
   "msg/TargetFeedback.msg"
+  "msg/TargetPositionEstimate.msg"
+  "msg/TopdownCenteringFeedback.msg"
+  "msg/TrackedTarget.msg"
   DEPENDENCIES std_msgs
 )
 

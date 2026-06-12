@@ -2,6 +2,7 @@ uint32 track_id
 uint32 observations
 uint32 last_call_index
 string last_request_id
+string target_label
 
 float32 latest_confidence
 float32 best_confidence

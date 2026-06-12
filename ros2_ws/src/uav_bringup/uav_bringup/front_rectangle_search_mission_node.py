@@ -4,11 +4,11 @@ import math
 import threading
 import time
 
-from pymavlink import mavutil
 import rclpy
 from rclpy.node import Node
 from uav_interfaces.msg import TargetFeedback
 
+from uav_bringup.common.local_ned_controller import LocalNedController
 from uav_bringup.common.mission_config import declare_guided_takeoff_params
 from uav_bringup.common.mission_config import load_guided_takeoff_config
 from uav_bringup.common.mission_runtime import MissionRuntime
@@ -25,8 +25,6 @@ Mission flow:
 """
 
 # LOCAL_NED uses x=North, y=East, z=Down; altitude above home is negative z.
-# Position-only SET_POSITION_TARGET_LOCAL_NED: ignore velocity, acceleration, yaw, and yaw-rate.
-POSITION_TARGET_TYPEMASK = 3576
 
 
 class FrontRectangleSearchMissionNode(Node):
@@ -50,14 +48,21 @@ class FrontRectangleSearchMissionNode(Node):
         self.runtime = MissionRuntime(node=self, config=self.config, stop_event=self.stop_event)
         self.flight_ops = None
 
-        self.local_x = None
-        self.local_y = None
-        self.local_z = None
-        self.last_local_position_time = 0.0
-        self.current_yaw_deg = None
-        self.last_attitude_time = 0.0
-        self.origin_x = None
-        self.origin_y = None
+        self.local_ned = LocalNedController(
+            node=self,
+            runtime=self.runtime,
+            stop_event=self.stop_event,
+            origin_sample_count=self.origin_sample_count,
+            software_radius_m=self.software_radius_m,
+            waypoint_acceptance_m=self.waypoint_acceptance_m,
+            waypoint_timeout_sec=self.waypoint_timeout_sec,
+            setpoint_hz=self.setpoint_hz,
+            local_position_timeout_sec=self.local_position_timeout_sec,
+            yaw_speed_deg_s=self.yaw_speed_deg_s,
+            yaw_acceptance_deg=self.yaw_acceptance_deg,
+            yaw_timeout_sec=self.yaw_timeout_sec,
+            yaw_log_interval_sec=1.0,
+        )
         self.front_yaw_deg_active = None
 
         self.latest_feedback = None
@@ -163,7 +168,9 @@ class FrontRectangleSearchMissionNode(Node):
             return
 
         self.request_search_streams()
-        self.flight_ops = self.runtime.make_flight_ops()
+        self.flight_ops = self.runtime.make_flight_ops(
+            drain_fn=self.local_ned.drain_messages,
+        )
 
         if self.runtime.stop_if_dry_run("Dry-run enabled. Front rectangle movement/arm/takeoff commands not sent."):
             return
@@ -261,10 +268,11 @@ class FrontRectangleSearchMissionNode(Node):
         return route
 
     def body_to_local_offset(self, forward_m: float, right_m: float):
-        yaw_rad = math.radians(self.front_yaw_deg_active)
-        north_m = forward_m * math.cos(yaw_rad) - right_m * math.sin(yaw_rad)
-        east_m = forward_m * math.sin(yaw_rad) + right_m * math.cos(yaw_rad)
-        return north_m, east_m
+        return self.local_ned.body_to_local_offset(
+            forward_m,
+            right_m,
+            self.front_yaw_deg_active,
+        )
 
     @staticmethod
     def lane_offsets(width_m: float, lane_count: int):
@@ -284,52 +292,14 @@ class FrontRectangleSearchMissionNode(Node):
         acceptance_m: float = None,
         timeout_sec: float = None,
     ) -> bool:
-        if not self.target_inside_radius(north_m, east_m, self.software_radius_m):
-            self.get_logger().error(
-                f"Refusing waypoint {label}: radius={math.hypot(north_m, east_m):.2f}m "
-                f"> software_radius_m={self.software_radius_m:.2f}m"
-            )
-            return False
-
-        target_x = self.origin_x + north_m
-        target_y = self.origin_y + east_m
-        target_z = -altitude_m
-
-        self.get_logger().warn(f"Goto {label}: north={north_m:.1f}m east={east_m:.1f}m alt={altitude_m:.1f}m")
-
-        start = time.monotonic()
-        next_send = 0.0
-        send_period = 1.0 / max(self.setpoint_hz, 0.1)
-        acceptance_m = self.waypoint_acceptance_m if acceptance_m is None else acceptance_m
-        timeout_sec = self.waypoint_timeout_sec if timeout_sec is None else timeout_sec
-
-        while rclpy.ok() and not self.stop_event.is_set():
-            now = time.monotonic()
-            self.spin_and_drain()
-
-            if not self.local_position_fresh(now):
-                self.get_logger().error("Local position timeout during waypoint movement.")
-                return False
-
-            if self.current_radius_m() > self.software_radius_m:
-                self.get_logger().error("Software radius breach detected during waypoint movement.")
-                return False
-
-            if now >= next_send:
-                self.send_local_position_target(target_x, target_y, target_z)
-                next_send = now + send_period
-
-            distance_xy = math.hypot(self.local_x - target_x, self.local_y - target_y)
-            if distance_xy <= acceptance_m:
-                return True
-
-            if now - start > timeout_sec:
-                self.get_logger().error(f"Waypoint timeout: {label}")
-                return False
-
-            time.sleep(0.05)
-
-        return False
+        return self.local_ned.goto_offset(
+            label,
+            north_m,
+            east_m,
+            altitude_m,
+            acceptance_m=acceptance_m,
+            timeout_sec=timeout_sec,
+        )
 
     def hold_and_watch_feedback(self, *, label: str, hold_sec: float) -> bool:
         start = time.monotonic()
@@ -419,8 +389,7 @@ class FrontRectangleSearchMissionNode(Node):
         forward_m, right_m = self.clamped_feedback_step(feedback)
         delta_north_m, delta_east_m = self.body_to_local_offset(forward_m, right_m)
 
-        current_north_m = self.local_x - self.origin_x
-        current_east_m = self.local_y - self.origin_y
+        current_north_m, current_east_m = self.local_ned.current_offset()
         target_north_m = current_north_m + delta_north_m
         target_east_m = current_east_m + delta_east_m
 
@@ -465,7 +434,7 @@ class FrontRectangleSearchMissionNode(Node):
 
     def capture_front_yaw(self) -> bool:
         if not self.use_current_yaw_as_front:
-            self.front_yaw_deg_active = self.normalize_angle_deg(self.front_yaw_deg)
+            self.front_yaw_deg_active = self.local_ned.normalize_angle_deg(self.front_yaw_deg)
             self.get_logger().warn(f"Front yaw fixed from parameter: {self.front_yaw_deg_active:.1f} deg")
             return True
 
@@ -473,8 +442,8 @@ class FrontRectangleSearchMissionNode(Node):
         while time.monotonic() - start < self.local_position_timeout_sec:
             self.spin_and_drain()
             now = time.monotonic()
-            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
-                self.front_yaw_deg_active = self.current_yaw_deg
+            if self.local_ned.yaw_fresh(now):
+                self.front_yaw_deg_active = self.local_ned.current_yaw_deg
                 self.get_logger().warn(f"Front yaw captured from current attitude: {self.front_yaw_deg_active:.1f} deg")
                 return True
             time.sleep(0.05)
@@ -485,143 +454,20 @@ class FrontRectangleSearchMissionNode(Node):
     def set_yaw(self, yaw_deg: float) -> bool:
         """Ask ArduPilot to rotate toward the target yaw while staying in GUIDED mode."""
 
-        self.runtime.mav_client.command_long_send(
-            self.runtime.mav_client.master.target_system,
-            self.runtime.mav_client.master.target_component,
-            mavutil.mavlink.MAV_CMD_CONDITION_YAW,
-            0,
-            yaw_deg,
-            self.yaw_speed_deg_s,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
-        return self.wait_yaw_reached(yaw_deg)
-
-    def wait_yaw_reached(self, target_yaw_deg: float) -> bool:
-        target_yaw_deg = self.normalize_angle_deg(target_yaw_deg)
-        start = time.monotonic()
-        last_print = 0.0
-
-        while rclpy.ok() and not self.stop_event.is_set():
-            now = time.monotonic()
-            self.spin_and_drain()
-
-            if self.current_yaw_deg is not None and now - self.last_attitude_time <= self.local_position_timeout_sec:
-                yaw_error_deg = abs(self.angle_diff_deg(target_yaw_deg, self.current_yaw_deg))
-                if now - last_print > 1.0:
-                    self.get_logger().info(
-                        f"Yaw wait: current={self.current_yaw_deg:.1f} deg "
-                        f"target={target_yaw_deg:.1f} deg error={yaw_error_deg:.1f} deg"
-                    )
-                    last_print = now
-
-                if yaw_error_deg <= self.yaw_acceptance_deg:
-                    return True
-
-            if now - start > self.yaw_timeout_sec:
-                self.get_logger().error(
-                    f"Yaw timeout: target={target_yaw_deg:.1f} deg current={self.current_yaw_deg}"
-                )
-                return False
-
-            time.sleep(0.05)
-
-        return False
-
-    def send_local_position_target(self, x: float, y: float, z: float):
-        """Send a GUIDED position target in LOCAL_NED coordinates."""
-
-        self.runtime.mav_client.set_position_target_local_ned_send(
-            int(time.monotonic() * 1000) & 0xFFFFFFFF,
-            self.runtime.mav_client.master.target_system,
-            self.runtime.mav_client.master.target_component,
-            mavutil.mavlink.MAV_FRAME_LOCAL_NED,
-            POSITION_TARGET_TYPEMASK,
-            x,
-            y,
-            z,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )
+        return self.local_ned.set_yaw(yaw_deg)
 
     def request_search_streams(self):
-        self.runtime.mav_client.request_message_interval(
-            mavutil.mavlink.MAVLINK_MSG_ID_LOCAL_POSITION_NED,
-            5.0,
-        )
-        self.runtime.mav_client.request_message_interval(
-            mavutil.mavlink.MAVLINK_MSG_ID_ATTITUDE,
-            10.0,
-        )
+        self.local_ned.request_streams(local_position_hz=5.0, attitude_hz=10.0)
 
     def capture_local_origin(self, phase: str) -> bool:
-        samples = []
-        last_sample_time = 0.0
-        start = time.monotonic()
-        while time.monotonic() - start < self.local_position_timeout_sec:
-            self.spin_and_drain()
-            if (
-                self.local_x is not None
-                and self.local_position_fresh(time.monotonic())
-                and self.last_local_position_time > last_sample_time
-            ):
-                samples.append((self.local_x, self.local_y))
-                last_sample_time = self.last_local_position_time
-
-            if len(samples) >= self.origin_sample_count:
-                self.origin_x = sum(sample[0] for sample in samples) / len(samples)
-                self.origin_y = sum(sample[1] for sample in samples) / len(samples)
-                self.get_logger().warn(
-                    f"Local origin captured ({phase}): "
-                    f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
-                )
-                return True
-
-            time.sleep(0.05)
-
-        if samples:
-            self.origin_x = sum(sample[0] for sample in samples) / len(samples)
-            self.origin_y = sum(sample[1] for sample in samples) / len(samples)
-            self.get_logger().warn(
-                f"Local origin captured ({phase}, limited samples): "
-                f"x={self.origin_x:.2f}, y={self.origin_y:.2f}, samples={len(samples)}"
-            )
-            return True
-
-        self.get_logger().error(f"Failed to capture local origin ({phase}).")
-        return False
-
-    def drain_mavlink(self):
-        self.runtime.mav_client.drain_messages(self.on_mavlink_message)
-
-    def on_mavlink_message(self, msg):
-        self.runtime.readiness.process_message(msg)
-
-        if msg.get_type() == "LOCAL_POSITION_NED":
-            self.local_x = float(msg.x)
-            self.local_y = float(msg.y)
-            self.local_z = float(msg.z)
-            self.last_local_position_time = time.monotonic()
-        elif msg.get_type() == "ATTITUDE":
-            self.current_yaw_deg = self.normalize_angle_deg(math.degrees(float(msg.yaw)))
-            self.last_attitude_time = time.monotonic()
+        return self.local_ned.capture_origin(phase)
 
     def on_target_feedback(self, msg):
         self.latest_feedback = msg
         self.latest_feedback_time = time.monotonic()
 
     def spin_and_drain(self):
-        rclpy.spin_once(self, timeout_sec=0.0)
-        self.drain_mavlink()
+        self.local_ned.spin_and_drain()
 
     def finish_mission(self):
         if self.finish_mode:
@@ -654,32 +500,17 @@ class FrontRectangleSearchMissionNode(Node):
         self.get_logger().info(f"abort_mode                   : {self.abort_mode}")
 
     def current_radius_m(self) -> float:
-        if self.local_x is None or self.origin_x is None:
-            return 0.0
-        return math.hypot(self.local_x - self.origin_x, self.local_y - self.origin_y)
+        return self.local_ned.current_radius_m()
 
     def current_altitude_m(self) -> float:
-        if self.local_z is None:
-            return 0.0
-        return -self.local_z
+        return self.local_ned.current_altitude_m()
 
     def local_position_fresh(self, now: float) -> bool:
-        return (
-            self.local_x is not None
-            and now - self.last_local_position_time <= self.local_position_timeout_sec
-        )
+        return self.local_ned.local_position_fresh(now)
 
     @staticmethod
     def target_inside_radius(north_m: float, east_m: float, radius_m: float) -> bool:
-        return math.hypot(north_m, east_m) <= radius_m
-
-    @staticmethod
-    def normalize_angle_deg(angle_deg: float) -> float:
-        return angle_deg % 360.0
-
-    @staticmethod
-    def angle_diff_deg(target_deg: float, current_deg: float) -> float:
-        return (target_deg - current_deg + 180.0) % 360.0 - 180.0
+        return LocalNedController.target_inside_radius(north_m, east_m, radius_m)
 
     @staticmethod
     def clamp(value: float, min_value: float, max_value: float) -> float:

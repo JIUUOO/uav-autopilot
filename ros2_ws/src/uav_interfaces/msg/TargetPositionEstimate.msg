@@ -1,0 +1,15 @@
+std_msgs/Header header
+
+bool has_estimate
+string estimate_source
+string reason
+string target_label
+
+uint32 sample_count
+float32 centered_error_x_norm
+float32 centered_error_y_norm
+float32 estimated_horizontal_error_m
+
+float64 estimated_latitude_deg
+float64 estimated_longitude_deg
+float64 uav_altitude_m
