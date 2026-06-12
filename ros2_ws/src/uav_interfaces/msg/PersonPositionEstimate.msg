@@ -1,0 +1,23 @@
+std_msgs/Header header
+
+bool has_estimate
+string estimate_source
+string reason
+
+uint32 track_id
+float32 confidence
+string distance_bucket
+
+float64 uav_latitude_deg
+float64 uav_longitude_deg
+float64 uav_altitude_m
+float64 heading_deg
+
+float32 target_body_forward_m
+float32 target_body_right_m
+float32 target_distance_m
+float32 estimated_horizontal_error_m
+
+float64 estimated_latitude_deg
+float64 estimated_longitude_deg
+float64 estimated_altitude_m

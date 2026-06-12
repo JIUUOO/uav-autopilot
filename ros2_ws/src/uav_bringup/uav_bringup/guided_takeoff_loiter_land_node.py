@@ -5,6 +5,9 @@ import threading
 import rclpy
 from rclpy.node import Node
 
+from uav_bringup.common.land_params import configure_land_speed_params
+from uav_bringup.common.land_params import declare_land_speed_params
+from uav_bringup.common.land_params import load_land_speed_params
 from uav_bringup.common.mission_config import declare_guided_takeoff_params
 from uav_bringup.common.mission_config import load_guided_takeoff_config
 from uav_bringup.common.mission_loops import run_hold_loop
@@ -16,7 +19,9 @@ class GuidedTakeoffLoiterLandNode(Node):
         super().__init__("guided_takeoff_loiter_land_node")
 
         declare_guided_takeoff_params(self, include_land_after_hold=True)
+        declare_land_speed_params(self)
         self.config = load_guided_takeoff_config(self, include_land_after_hold=True)
+        self.land_speed_params = load_land_speed_params(self)
 
         self.stop_event = threading.Event()
         self.runtime = MissionRuntime(node=self, config=self.config, stop_event=self.stop_event)
@@ -39,6 +44,11 @@ class GuidedTakeoffLoiterLandNode(Node):
         self.flight_ops = self.runtime.make_flight_ops()
 
         if self.runtime.stop_if_dry_run("Dry-run enabled. GUIDED/ARM/TAKEOFF/LOITER/LAND not sent."):
+            return
+
+        if not configure_land_speed_params(self, self.runtime.mav_client, self.land_speed_params):
+            self.get_logger().error("LAND speed parameter setup failed. Mission will not arm/takeoff.")
+            self.runtime.finish()
             return
 
         if not self.flight_ops.set_mode("GUIDED"):

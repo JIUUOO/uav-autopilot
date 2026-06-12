@@ -24,15 +24,22 @@ class GuidedTakeoffMissionConfig:
     max_hacc_m: float
     require_optical_flow: bool
     optical_flow_timeout_sec: float
+    require_battery_check: bool
+    min_battery_voltage_v: float
+    battery_check_timeout_sec: float
     land_after_hold: bool = False
 
 
-def declare_guided_takeoff_params(node, include_land_after_hold: bool = False):
+def declare_guided_takeoff_params(
+    node,
+    include_land_after_hold: bool = False,
+    default_altitude_m: float = 1.0,
+):
     node.declare_parameter("port", "/dev/ttyACM0")
     node.declare_parameter("baudrate", 115200)
     node.declare_parameter("dry_run", True)
 
-    node.declare_parameter("altitude_m", 1.0)  # objective altitude (GUIDED mode)
+    node.declare_parameter("altitude_m", default_altitude_m)  # objective altitude (GUIDED mode)
     node.declare_parameter("altitude_ratio", 0.85)  # altitude threshold for GUIDED -> LOITER mode
     node.declare_parameter("timeout_sec", 20.0)  # common timeout for heartbeat, ACK, mode, arm waits
     node.declare_parameter("ready_timeout_sec", 90.0)  # max wait for '(GPS, RTK) + optical flow' readiness before takeoff
@@ -54,6 +61,9 @@ def declare_guided_takeoff_params(node, include_land_after_hold: bool = False):
 
     node.declare_parameter("require_optical_flow", True)
     node.declare_parameter("optical_flow_timeout_sec", 3.0)  # flow is ready only if recent flow messages exist
+    node.declare_parameter("require_battery_check", True)
+    node.declare_parameter("min_battery_voltage_v", 14.4)
+    node.declare_parameter("battery_check_timeout_sec", 10.0)
 
 
 def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> GuidedTakeoffMissionConfig:
@@ -80,5 +90,10 @@ def load_guided_takeoff_config(node, include_land_after_hold: bool = False) -> G
         max_hacc_m=float(node.get_parameter("max_hacc_m").value),
         require_optical_flow=bool(node.get_parameter("require_optical_flow").value),
         optical_flow_timeout_sec=float(node.get_parameter("optical_flow_timeout_sec").value),
+        require_battery_check=bool(node.get_parameter("require_battery_check").value),
+        min_battery_voltage_v=float(node.get_parameter("min_battery_voltage_v").value),
+        battery_check_timeout_sec=float(
+            node.get_parameter("battery_check_timeout_sec").value
+        ),
         land_after_hold=land_after_hold,
     )

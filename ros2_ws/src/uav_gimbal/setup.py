@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'uav_camera'
+package_name = 'uav_gimbal'
 
 setup(
     name=package_name,
@@ -10,8 +10,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-        ("share/" + package_name + "/launch", ["launch/camera.launch.py"]),
-        ("share/" + package_name + "/config", ["config/gimbal_camera.yaml"]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'image_flip = uav_camera.image_flip_node:main',
+            'gimbal_pitch_controller = uav_gimbal.gimbal_pitch_controller_node:main',
+            'gimbal_scan_fsm = uav_gimbal.gimbal_scan_fsm_node:main',
         ],
     },
 )

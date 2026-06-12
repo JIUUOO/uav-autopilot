@@ -7,20 +7,34 @@ import os
 def generate_launch_description():
     pkg_share = get_package_share_directory("uav_camera")
 
-    front_config = os.path.join(pkg_share, "config", "front_camera.yaml")
-    front_cam = Node(
+    gimbal_config = os.path.join(pkg_share, "config", "gimbal_camera.yaml")
+    gimbal_cam = Node(
         package="usb_cam",
         executable="usb_cam_node_exe",
-        name="front_usb_cam",
-        namespace="/uav/camera/front",
+        name="gimbal_camera",
+        namespace="/uav/camera/gimbal",
         output="screen",
-        parameters=[front_config],
+        parameters=[gimbal_config],
         remappings=[
-            ("image_raw", "image_raw"),
+            ("image_raw", "image_raw_unflipped"),
             ("camera_info", "camera_info"),
         ],
     )
 
+    image_flip = Node(
+        package="uav_camera",
+        executable="image_flip",
+        name="gimbal_camera_flip",
+        namespace="/uav/camera/gimbal",
+        output="screen",
+        parameters=[{
+            "input_topic": "/uav/camera/gimbal/image_raw_unflipped",
+            "output_topic": "/uav/camera/gimbal/image_raw",
+            "flip_mode": "rotate_180",
+        }],
+    )
+
     return LaunchDescription([
-        front_cam,
+        gimbal_cam,
+        image_flip,
     ])

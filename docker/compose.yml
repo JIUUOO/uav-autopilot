@@ -14,9 +14,12 @@ services:
     privileged: true
 
     environment:
-      - ROS_DOMAIN_ID=0
-      - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - DISPLAY=${DISPLAY:-}
       - QT_X11_NO_MITSHM=1
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - NTRIP_USER=${NTRIP_USER:-}
+      - NTRIP_PASS=${NTRIP_PASS:-gnss}
 
     volumes:
       # Mount the repository into the container for live development

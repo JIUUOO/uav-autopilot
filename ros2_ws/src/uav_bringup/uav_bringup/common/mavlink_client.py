@@ -50,6 +50,7 @@ class MavlinkClient:
 
     def request_default_streams(self, hz: float = 5.0, include_flow_rad: bool = True):
         msg_ids = [
+            mavutil.mavlink.MAVLINK_MSG_ID_SYS_STATUS,
             mavutil.mavlink.MAVLINK_MSG_ID_GPS_RAW_INT,
             mavutil.mavlink.MAVLINK_MSG_ID_GLOBAL_POSITION_INT,
             mavutil.mavlink.MAVLINK_MSG_ID_OPTICAL_FLOW,
@@ -63,6 +64,23 @@ class MavlinkClient:
         for msg_id in msg_ids:
             self.request_message_interval(msg_id, hz)
 
+    def wait_battery_voltage(self, timeout_sec: float):
+        """Return the first valid SYS_STATUS battery voltage in volts, or None."""
+
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            msg = self.master.recv_match(type="SYS_STATUS", blocking=True, timeout=1.0)
+            if msg is None:
+                continue
+
+            voltage_mv = getattr(msg, "voltage_battery", None)
+            if voltage_mv is None or voltage_mv <= 0 or voltage_mv >= 65535:
+                continue
+
+            return float(voltage_mv) / 1000.0
+
+        return None
+
     def command_long_send(self, *args):
         with self.send_lock:
             self.master.mav.command_long_send(*args)
@@ -70,6 +88,42 @@ class MavlinkClient:
     def set_mode_send(self, *args):
         with self.send_lock:
             self.master.mav.set_mode_send(*args)
+
+    def set_position_target_local_ned_send(self, *args):
+        with self.send_lock:
+            self.master.mav.set_position_target_local_ned_send(*args)
+
+    def set_param_float(self, name: str, value: float, timeout_sec: float) -> bool:
+        param_name = name.encode("ascii")
+        self.logger.warn(f"Setting FC parameter: {name}={value}")
+
+        with self.send_lock:
+            self.master.mav.param_set_send(
+                self.master.target_system,
+                self.master.target_component,
+                param_name,
+                float(value),
+                mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+            )
+
+        start = time.time()
+        while time.time() - start < timeout_sec:
+            msg = self.master.recv_match(type="PARAM_VALUE", blocking=True, timeout=1.0)
+            if msg is None:
+                continue
+
+            received_name = msg.param_id
+            if isinstance(received_name, bytes):
+                received_name = received_name.decode("ascii", errors="ignore")
+            received_name = received_name.rstrip("\x00")
+
+            if received_name == name:
+                current_value = float(msg.param_value)
+                self.logger.warn(f"FC parameter confirmed: {name}={current_value}")
+                return abs(current_value - float(value)) < 0.01
+
+        self.logger.error(f"FC parameter set timeout: {name}")
+        return False
 
     def drain_messages(self, handler):
         while True:
